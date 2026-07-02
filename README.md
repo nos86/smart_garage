@@ -82,6 +82,23 @@ Two red SMD LEDs (LED1, LED2 — XL-2012SURC) driven directly from RP2040 GPIOs 
 
 > **SPI bus:** GP2–GP5 form the SPI0 peripheral interface to the MCP25625. The MCP25625 uses an external 8 MHz crystal (X1) as its CAN bit-rate clock source; the RP2040 does not share this crystal.
 
+### Detailed electrical connectivity to RP2040
+
+| Subsystem | RP2040 signal(s) | Interface conditioning between peripheral and RP2040 | Electrical behavior at RP2040 side |
+|-----------|------------------|-------------------------------------------------------|------------------------------------|
+| CAN controller/transceiver (U2 MCP25625) | GP2 (SCK), GP3 (MOSI), GP4 (MISO), GP5 (CSn), GP6 (INT), GP7 (RST), GP8 (STBY) | Direct 3.3 V digital SPI wiring, dedicated active-low interrupt line, reset line, and standby control line | SPI and control lines are 3.3 V CMOS; INT is active-low; CSn and RST are active-low outputs from RP2040 |
+| Isolated input channel 1 (INPUT1 via U5 PC817C) | GP0 | 24 V field input drives optocoupler LED; transistor output side referenced to 3.3 V with 10 kΩ pull-up | RP2040 reads active-low logic (line pulled high when input is idle, pulled low when optocoupler conducts) |
+| Isolated input channel 2 (INPUT2 via U8 PC817C) | GP1 | Same front-end as INPUT1 (optocoupler isolation + 3.3 V pull-up) | RP2040 reads active-low logic |
+| DIP switch address selector (SW1, 5 positions) | GP9–GP13 | Each switch line uses 1 kΩ pull-up to 3.3 V and switch-to-GND when closed | Open switch reads high; closed switch reads low (inverted logic bits) |
+| Relay driver 1 (J1 coil path) | GP14 | RP2040 drives BSS138 gate through 1 kΩ resistor; MOSFET sinks 24 V relay coil current | GPIO high turns MOSFET on and energizes relay; GPIO low releases relay |
+| Relay driver 2 (J2 coil path) | GP15 | Same gate-drive topology as relay 1 | GPIO high turns MOSFET on and energizes relay; GPIO low releases relay |
+| PIR motion sensor connector (U11) | GP26 | Sensor digital output routed through 1 kΩ series resistor, with 100 kΩ pull-down and 100 nF filtering | Motion event presented as active-high pulse to RP2040 |
+| Ultrasonic power control (CN1 VCC path) | GP27 | GP27 controls TPS22918 load switch ON pin, which switches sensor supply rail | GPIO high powers ultrasonic module; GPIO low removes power |
+| Ultrasonic trigger (CN1 TRIG) | GP28 | Direct digital output from RP2040 to sensor trigger pin | Firmware emits ≥10 µs high pulse to start measurement |
+| Ultrasonic echo (CN1 ECHO) | GP29 | Echo line routed as digital input to RP2040 timing capture path | Pulse width at RP2040 input is proportional to measured distance |
+| Status LED1 | LED1 GPIO (module pin) | RP2040 output drives LED through series resistor | Active-high LED drive |
+| Status LED2 | LED2 GPIO (module pin) | RP2040 output drives LED through series resistor | Active-high LED drive |
+
 ---
 
 ## Control logic overview
