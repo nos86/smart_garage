@@ -39,11 +39,11 @@ Two **PC817C** optocouplers provide galvanically isolated digital inputs (INPUT1
 
 ### Hardware configuration input
 
-A **5-position DIP switch** (SW1, HV-GSHP05TS) provides a 5-bit hardware configuration input to RP2040 GPIOs. Firmware may interpret these bits for node addressing, mode selection, or other configuration policy.
+A **5-position DIP switch** (SW1) provides a 5-bit hardware configuration input to RP2040 GPIOs. Firmware may interpret these bits for node addressing, mode selection, or other configuration policy.
 
 ### Status LEDs
 
-Two red SMD LEDs (LED1, LED2 — XL-2012SURC) are driven from RP2040 GPIOs through current-limiting resistors.
+Two LEDs (LED1, LED2) are driven from RP2040 GPIOs through current-limiting resistors.
 
 ---
 
