@@ -62,8 +62,8 @@ Two LEDs (LED1, LED2) are driven from RP2040 GPIOs through current-limiting resi
 | GP4 | SPI0_RX | Input | SPI MISO from MCP25625 (SO) |
 | GP5 | SPI0_CSn | Output | SPI chip-select for MCP25625 (active-low) |
 | GP6 | MCP_INT | Input | MCP25625 interrupt output (active-low) |
-| GP7 | MCP_RST | Output | MCP25625 hardware reset (active-low) |
-| GP8 | MCP_STBY | Output | MCP25625 standby control (high = standby) |
+| GP7 | LED2 | Output | Status LED 2 drive (active-high) |
+| GP8 | LED1 | Output | Status LED 1 drive (active-high) |
 | GP9 | DIP1 | Input | DIP switch position 1 (firmware-defined configuration bit 0) |
 | GP10 | DIP2 | Input | DIP switch position 2 (firmware-defined configuration bit 1) |
 | GP11 | DIP3 | Input | DIP switch position 3 (firmware-defined configuration bit 2) |
@@ -75,16 +75,14 @@ Two LEDs (LED1, LED2) are driven from RP2040 GPIOs through current-limiting resi
 | GP27 | ULTRA_ON | Output | Ultrasonic sensor VCC enable via TPS22918 load switch |
 | GP28 | ULTRA_TRIG | Output | Ultrasonic trigger pulse output |
 | GP29 | ULTRA_ECHO | Input | Ultrasonic echo pulse timing input |
-| LED1 pin | LED1 | Output | Status LED 1 drive (active-high) |
-| LED2 pin | LED2 | Output | Status LED 2 drive (active-high) |
 
-> **SPI bus:** GP2–GP5 form SPI0 to MCP25625. MCP25625 uses external crystal X1 (8 MHz).
+> **SPI bus:** GP2–GP5 form SPI0 to MCP25625. MCP25625 uses external crystal X1 (8 MHz). No hardware reset or standby line is wired to a GPIO: the firmware resets the chip via its SPI soft-reset instruction and keeps it permanently out of standby (never asserts STBY), per `firmware/docs/architecture-plan.md`'s "MCP25625 always active" decision — see `firmware/include/hal/pins.h` for the source of truth on the actual GPIO assignment used by the firmware.
 
 ### Detailed electrical connectivity to RP2040
 
 | Subsystem | RP2040 signal(s) | Interface conditioning between peripheral and RP2040 | Electrical behavior at RP2040 side |
 |-----------|------------------|-------------------------------------------------------|------------------------------------|
-| CAN controller/transceiver (U2 MCP25625) | GP2 (SCK), GP3 (MOSI), GP4 (MISO), GP5 (CSn), GP6 (INT), GP7 (RST), GP8 (STBY) | Direct 3.3 V digital SPI wiring, dedicated active-low interrupt line, reset line, and standby control line | SPI and control lines are 3.3 V CMOS; INT is active-low; CSn and RST are active-low outputs from RP2040 |
+| CAN controller/transceiver (U2 MCP25625) | GP2 (SCK), GP3 (MOSI), GP4 (MISO), GP5 (CSn), GP6 (INT) | Direct 3.3 V digital SPI wiring plus a dedicated active-low interrupt line; no RST/STBY GPIO wired — reset is done via the chip's SPI soft-reset instruction, and STBY is never asserted (chip stays always-active per `firmware/docs/architecture-plan.md`) | SPI and control lines are 3.3 V CMOS; INT is active-low; CSn is an active-low output from RP2040 |
 | Isolated input channel 1 (INPUT1 via U5 PC817C) | GP0 | 24 V field input drives optocoupler LED; transistor output side referenced to 3.3 V with 10 kΩ pull-up | RP2040 reads active-low logic (line pulled high when input is idle, pulled low when optocoupler conducts) |
 | Isolated input channel 2 (INPUT2 via U8 PC817C) | GP1 | Same front-end as INPUT1 (optocoupler isolation + 3.3 V pull-up) | RP2040 reads active-low logic |
 | DIP hardware configuration input (SW1, 5 positions) | GP9–GP13 | Each switch line uses 1 kΩ pull-up to 3.3 V and switch-to-GND when closed | Open switch reads high; closed switch reads low (inverted logic bits) |
