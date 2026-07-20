@@ -15,7 +15,8 @@ namespace app
         constexpr uint8_t kTabStatus = 0;
         constexpr uint8_t kTabInputs = 1;
         constexpr uint8_t kTabOutputs = 2;
-        constexpr uint8_t kTabCount = 3;
+        constexpr uint8_t kTabRtos = 3;
+        constexpr uint8_t kTabCount = 4;
 
         constexpr uint8_t kOutputCount = 5;
 
@@ -25,6 +26,37 @@ namespace app
         constexpr uint8_t kModeAuto = 0;
         constexpr uint8_t kModeOff = 1;
         constexpr uint8_t kModeOn = 2;
+
+        // Raw values of FreeRTOS' eTaskState, mirrored here so this layer
+        // needs no FreeRTOS includes. serial_cli.cpp static_asserts they stay
+        // in sync.
+        constexpr uint8_t kTaskStateRunning = 0;
+        constexpr uint8_t kTaskStateReady = 1;
+        constexpr uint8_t kTaskStateBlocked = 2;
+        constexpr uint8_t kTaskStateSuspended = 3;
+        constexpr uint8_t kTaskStateDeleted = 4;
+        constexpr uint8_t kTaskStateInvalid = 5;
+
+        // Upper bound on tasks shown on the RTOS page (app tasks, FreeRTOS
+        // timer/idle tasks, arduino-pico's per-core wrapper/idle tasks, the
+        // USB task -- ~10 on this firmware). serial_cli.cpp's
+        // uxTaskGetSystemState() call needs a buffer sized for *all* tasks
+        // or it returns zero rows, not a truncated list, so keep this above
+        // the real task count with some headroom if more tasks get added.
+        constexpr uint8_t kMaxRtosTasks = 12;
+        // configMAX_TASK_NAME_LEN (FreeRTOSConfig.h) is 10 incl. NUL, so a
+        // FreeRTOS task name is never longer than 9 chars to begin with --
+        // match that exactly so this layer does not clip it further.
+        constexpr uint8_t kTaskNameMax = 10;
+
+        struct RtosTaskInfo
+        {
+            char name[kTaskNameMax] = {};
+            uint8_t state = kTaskStateInvalid;
+            uint8_t priority = 0;
+            uint32_t stackFreeWords = 0;
+            uint8_t cpuPercent = 0;
+        };
 
         struct Model
         {
@@ -41,6 +73,11 @@ namespace app
             bool ultrasonicTimeout = false;
             bool ultrasonicPowered = false;
             uint8_t ultrasonicMode = kModeAuto;
+            RtosTaskInfo rtosTasks[kMaxRtosTasks] = {};
+            uint8_t rtosTaskCount = 0;
+            uint32_t rtosFreeHeapBytes = 0;
+            uint32_t rtosTotalHeapBytes = 0;
+            uint32_t rtosUptimeMs = 0;
             uint8_t activeTab = kTabStatus;
             uint8_t selection[kTabCount] = {};
         };

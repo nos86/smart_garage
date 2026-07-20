@@ -22,6 +22,19 @@ namespace app
         static_assert(cli::kModeOff == static_cast<uint8_t>(ForceMode::kOff), "mode value mismatch");
         static_assert(cli::kModeOn == static_cast<uint8_t>(ForceMode::kOn), "mode value mismatch");
 
+        // Same reasoning for eTaskState (FreeRTOS task.h).
+        static_assert(cli::kTaskStateRunning == static_cast<uint8_t>(eRunning), "task state mismatch");
+        static_assert(cli::kTaskStateReady == static_cast<uint8_t>(eReady), "task state mismatch");
+        static_assert(cli::kTaskStateBlocked == static_cast<uint8_t>(eBlocked), "task state mismatch");
+        static_assert(cli::kTaskStateSuspended == static_cast<uint8_t>(eSuspended), "task state mismatch");
+        static_assert(cli::kTaskStateDeleted == static_cast<uint8_t>(eDeleted), "task state mismatch");
+        static_assert(cli::kTaskStateInvalid == static_cast<uint8_t>(eInvalid), "task state mismatch");
+
+        // How often the RTOS page's task table and heap stats are resampled
+        // while it is on screen; polling more often than this just burns
+        // cycles on numbers that will not visibly change.
+        constexpr uint32_t kRtosStatsPeriodMs = 500;
+
         constexpr uint8_t kHeaderRow = 1;
         constexpr uint8_t kTopRuleRow = 2;
         constexpr uint8_t kTabsRow = 3;
@@ -235,6 +248,14 @@ namespace app
             current = selectable - 1;
         }
         markDirty();
+
+        if (model_.activeTab == cli::kTabRtos)
+        {
+            // Sample immediately so the page does not show stale/zeroed
+            // stats until the next periodic refresh in pollInput().
+            rtosStatsLastMs_ = millis();
+            refreshRtosStats();
+        }
     }
 
     void SerialCli::moveSelection(int delta)
@@ -335,6 +356,47 @@ namespace app
     }
 
     //////////////////////////////////////////////////////////////////////
+    //  RTOS task analysis
+
+    void SerialCli::refreshRtosStats()
+    {
+        TaskStatus_t statuses[cli::kMaxRtosTasks];
+        uint32_t totalRunTime = 0;
+        UBaseType_t count = uxTaskGetSystemState(statuses, cli::kMaxRtosTasks, &totalRunTime);
+
+        model_.rtosTaskCount = static_cast<uint8_t>(count);
+        for (UBaseType_t i = 0; i < count; ++i)
+        {
+            cli::RtosTaskInfo &info = model_.rtosTasks[i];
+            snprintf(info.name, sizeof info.name, "%s", statuses[i].pcTaskName);
+            info.state = static_cast<uint8_t>(statuses[i].eCurrentState);
+            info.priority = static_cast<uint8_t>(statuses[i].uxCurrentPriority);
+            info.stackFreeWords = static_cast<uint32_t>(statuses[i].usStackHighWaterMark);
+            // Share of total run time since boot, not a live/instantaneous
+            // load -- configGENERATE_RUN_TIME_STATS only hands us cumulative
+            // counters, no cheap way to get a windowed rate here.
+            info.cpuPercent = totalRunTime > 0 ? static_cast<uint8_t>(
+                                                      (static_cast<uint64_t>(statuses[i].ulRunTimeCounter) * 100) /
+                                                      totalRunTime)
+                                                : 0;
+        }
+        for (UBaseType_t i = count; i < cli::kMaxRtosTasks; ++i)
+        {
+            model_.rtosTasks[i] = cli::RtosTaskInfo{};
+        }
+
+        // This port's FreeRTOS heap wrapper (heap_3a.c) does not implement
+        // xPortGetFreeHeapSize()/xPortGetMinimumEverFreeHeapSize() -- it
+        // just forwards to newlib malloc/free. Use the arduino-pico core's
+        // own heap accounting instead.
+        model_.rtosFreeHeapBytes = static_cast<uint32_t>(rp2040.getFreeHeap());
+        model_.rtosTotalHeapBytes = static_cast<uint32_t>(rp2040.getTotalHeap());
+        model_.rtosUptimeMs = millis();
+
+        markDirty();
+    }
+
+    //////////////////////////////////////////////////////////////////////
     //  Input handling
 
     void SerialCli::handleInputByte(char c)
@@ -403,6 +465,16 @@ namespace app
             }
 
             handleInputByte(static_cast<char>(value));
+        }
+
+        if (model_.activeTab == cli::kTabRtos)
+        {
+            uint32_t now = millis();
+            if (now - rtosStatsLastMs_ >= kRtosStatsPeriodMs)
+            {
+                rtosStatsLastMs_ = now;
+                refreshRtosStats();
+            }
         }
 
         render();

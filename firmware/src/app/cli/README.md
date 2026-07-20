@@ -26,10 +26,11 @@ Application logic and hardware access stay in `src/app/serial_cli.cpp`.
 - `pages.h` / `pages.cpp`
   - Declarative definition of pages (`Page`) and dynamic fields (`Field`).
   - Each field declares position, width, formatter (`FormatFn`), and style (`StyleFn`).
-  - Exposes `kPages` with 3 tabs:
+  - Exposes `kPages` with 4 tabs:
     - STATUS
     - INPUTS (adds the last ultrasonic reading; shows "disabled" when the sensor mode is OFF)
     - OUTPUTS (adds the ultrasonic activation mode as a cyclable OFF/ON/AUTO row)
+    - RTOS (read-only FreeRTOS task table: state, priority, free stack, CPU share, plus heap/uptime)
 
 ## How rendering works
 

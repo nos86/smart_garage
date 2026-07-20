@@ -19,7 +19,9 @@ namespace app
     {
 
         // Longest text a field formatter may produce, including the NUL.
-        constexpr size_t kFieldTextMax = 32;
+        // 56 (not 32) so the RTOS page's wide single-column task rows
+        // (full task name + inline Pri/Stack/CPU labels) are not clipped.
+        constexpr size_t kFieldTextMax = 56;
 
         using FormatFn = void (*)(const Model &model, char *buf, size_t len);
         using StyleFn = Style (*)(const Model &model);

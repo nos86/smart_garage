@@ -41,12 +41,14 @@ namespace app
         bool dirty_ = false;
         bool fullRedrawPending_ = true;
         InputState inputState_ = InputState::kIdle;
+        uint32_t rtosStatsLastMs_ = 0;
 
         bool updateConnectionState();
         void onConnected();
         void onDisconnected();
         void markDirty();
         void requestFullRedraw();
+        void refreshRtosStats();
 
         void render();
         void drawChrome();

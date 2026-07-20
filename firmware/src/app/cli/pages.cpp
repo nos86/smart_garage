@@ -245,12 +245,130 @@ namespace app
                 {3, 14, 38, fmtUltraModeRow, styleUltraModeRow},
             };
 
+            ////////////////////////////////////////////////////////////////
+            //  RTOS page
+
+            const char *taskStateLabel(uint8_t state)
+            {
+                switch (state)
+                {
+                case kTaskStateRunning:
+                    return "RUN";
+                case kTaskStateReady:
+                    return "READY";
+                case kTaskStateBlocked:
+                    return "BLOCK";
+                case kTaskStateSuspended:
+                    return "SUSP";
+                case kTaskStateDeleted:
+                    return "DEL";
+                default:
+                    return "INV";
+                }
+            }
+
+            template <uint8_t I>
+            void fmtRtosTaskRow(const Model &m, char *buf, size_t len)
+            {
+                if (I >= m.rtosTaskCount)
+                {
+                    copyText(buf, len, "");
+                    return;
+                }
+                const RtosTaskInfo &task = m.rtosTasks[I];
+                // Each value is self-labelled (Pri:/Stack:/CPU:) instead of
+                // relying on a header row, so the full task name (up to
+                // kTaskNameMax-1 chars -- FreeRTOS never gives us more) is
+                // never squeezed out to make column room.
+                snprintf(buf, len, "%-10s %-6s Pri:%-2u Stack:%-5lu CPU:%3u%%", task.name, taskStateLabel(task.state),
+                         static_cast<unsigned>(task.priority), static_cast<unsigned long>(task.stackFreeWords),
+                         static_cast<unsigned>(task.cpuPercent));
+            }
+
+            template <uint8_t I>
+            Style styleRtosTaskRow(const Model &m)
+            {
+                if (I >= m.rtosTaskCount)
+                {
+                    return theme::kValue;
+                }
+                return m.rtosTasks[I].state == kTaskStateRunning ? theme::kActive : theme::kValue;
+            }
+
+            void fmtRtosTaskCount(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "Tasks : %u", static_cast<unsigned>(m.rtosTaskCount));
+            }
+
+            void fmtRtosHeapFree(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "Free  : %4lu kB", static_cast<unsigned long>(m.rtosFreeHeapBytes / 1024));
+            }
+
+            void fmtRtosHeapTotal(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "Total : %4lu kB", static_cast<unsigned long>(m.rtosTotalHeapBytes / 1024));
+            }
+
+            void fmtRtosUptime(const Model &m, char *buf, size_t len)
+            {
+                uint32_t totalSec = m.rtosUptimeMs / 1000;
+                uint32_t hours = totalSec / 3600;
+                uint32_t minutes = (totalSec % 3600) / 60;
+                uint32_t seconds = totalSec % 60;
+                snprintf(buf, len, "Up    : %lu:%02lu:%02lu", static_cast<unsigned long>(hours),
+                         static_cast<unsigned long>(minutes), static_cast<unsigned long>(seconds));
+            }
+
+            // Two side-by-side frames, same pattern as the OUTPUTS page's
+            // "ADVANCED CMOS FEATURES" + "HELP" boxes. Left one is a
+            // single-column, "top"-style task list -- 50 of 78 cols (~64%),
+            // wide enough that a full task name never gets clipped; right
+            // one is the heap/uptime summary (~33%).
+            constexpr uint8_t kRtosListX = 3;
+            constexpr uint8_t kRtosListW = 50;
+            constexpr uint8_t kRtosSidebarBorderX = kRtosListW + 3; // 2-col gap, as on OUTPUTS
+            constexpr uint8_t kRtosSidebarX = kRtosSidebarBorderX + 2;
+
+            void drawRtosStatic(Screen &screen)
+            {
+                screen.frame({1, 5, kRtosListW, 17}, "TASKS");
+                screen.frame({kRtosSidebarBorderX, 5, static_cast<uint8_t>(78 - kRtosSidebarBorderX + 1), 17},
+                              "SYSTEM");
+
+                screen.put(kRtosSidebarX, 12, "Stack: free words", theme::kHelp);
+                screen.put(kRtosSidebarX, 13, "CPU%: run-time", theme::kHelp);
+                screen.put(kRtosSidebarX, 14, "share since boot", theme::kHelp);
+            }
+
+            constexpr Field kRtosFields[] = {
+                {kRtosListX, 6, 46, fmtRtosTaskRow<0>, styleRtosTaskRow<0>},
+                {kRtosListX, 7, 46, fmtRtosTaskRow<1>, styleRtosTaskRow<1>},
+                {kRtosListX, 8, 46, fmtRtosTaskRow<2>, styleRtosTaskRow<2>},
+                {kRtosListX, 9, 46, fmtRtosTaskRow<3>, styleRtosTaskRow<3>},
+                {kRtosListX, 10, 46, fmtRtosTaskRow<4>, styleRtosTaskRow<4>},
+                {kRtosListX, 11, 46, fmtRtosTaskRow<5>, styleRtosTaskRow<5>},
+                {kRtosListX, 12, 46, fmtRtosTaskRow<6>, styleRtosTaskRow<6>},
+                {kRtosListX, 13, 46, fmtRtosTaskRow<7>, styleRtosTaskRow<7>},
+                {kRtosListX, 14, 46, fmtRtosTaskRow<8>, styleRtosTaskRow<8>},
+                {kRtosListX, 15, 46, fmtRtosTaskRow<9>, styleRtosTaskRow<9>},
+                {kRtosListX, 16, 46, fmtRtosTaskRow<10>, styleRtosTaskRow<10>},
+                {kRtosListX, 17, 46, fmtRtosTaskRow<11>, styleRtosTaskRow<11>},
+                {kRtosSidebarX, 7, 22, fmtRtosTaskCount, nullptr},
+                {kRtosSidebarX, 8, 22, fmtRtosHeapFree, nullptr},
+                {kRtosSidebarX, 9, 22, fmtRtosHeapTotal, nullptr},
+                {kRtosSidebarX, 10, 22, fmtRtosUptime, nullptr},
+            };
+
+            static_assert(kMaxRtosTasks == 12, "kRtosFields task rows must match kMaxRtosTasks");
+
         } // namespace
 
         const Page kPages[kTabCount] = {
             {"STATUS", drawStatusStatic, kStatusFields, sizeof(kStatusFields) / sizeof(Field), 0},
             {"INPUTS", drawInputsStatic, kInputsFields, sizeof(kInputsFields) / sizeof(Field), 0},
             {"OUTPUTS", drawOutputsStatic, kOutputsFields, sizeof(kOutputsFields) / sizeof(Field), kOutputCount + 1},
+            {"RTOS", drawRtosStatic, kRtosFields, sizeof(kRtosFields) / sizeof(Field), 0},
         };
 
     } // namespace cli
