@@ -1,0 +1,465 @@
+#include "serial_cli.h"
+
+#include <Arduino.h>
+
+#include <cstring>
+
+#include "board.h"
+#include "cli/theme.h"
+#include "tasks.h"
+
+namespace app
+{
+
+    namespace
+    {
+
+        namespace theme = cli::theme;
+
+        // The model stores ForceMode values as raw bytes so the cli/ layer
+        // needs no FreeRTOS includes; keep the two definitions in sync.
+        static_assert(cli::kModeAuto == static_cast<uint8_t>(ForceMode::kAuto), "mode value mismatch");
+        static_assert(cli::kModeOff == static_cast<uint8_t>(ForceMode::kOff), "mode value mismatch");
+        static_assert(cli::kModeOn == static_cast<uint8_t>(ForceMode::kOn), "mode value mismatch");
+
+        constexpr uint8_t kHeaderRow = 1;
+        constexpr uint8_t kTopRuleRow = 2;
+        constexpr uint8_t kTabsRow = 3;
+        constexpr uint8_t kContentTop = 4;
+        constexpr uint8_t kContentBottom = 21;
+        constexpr uint8_t kBottomRuleRow = 22;
+        constexpr uint8_t kFooterRow = 23;
+
+        constexpr uint8_t kTabStep = 14;
+
+        constexpr char kTitle[] = "SMART GARAGE - CMOS SETUP UTILITY";
+
+        struct KeyHint
+        {
+            const char *key;
+            const char *desc;
+        };
+
+        constexpr KeyHint kKeyHints[] = {
+            {"Tab", "Next Page"},
+            {"Arrows", "Select Item"},
+            {"Enter", "Execute"},
+            {"R", "Redraw"},
+        };
+
+        cli::Style fieldStyle(const cli::Field &field, const cli::Model &model)
+        {
+            return field.style != nullptr ? field.style(model) : theme::kValue;
+        }
+
+    } // namespace
+
+    void SerialCli::begin()
+    {
+        connected_ = false;
+        inputState_ = InputState::kIdle;
+        updateConnectionState();
+    }
+
+    bool SerialCli::updateConnectionState()
+    {
+        bool nowConnected = Serial && Serial.dtr();
+        if (nowConnected == connected_)
+        {
+            return nowConnected;
+        }
+
+        connected_ = nowConnected;
+        if (connected_)
+        {
+            onConnected();
+        }
+        else
+        {
+            onDisconnected();
+        }
+
+        return connected_;
+    }
+
+    void SerialCli::onConnected()
+    {
+        model_.dipValue = board::dipSwitch.read();
+        model_.ultrasonicMode = debugControls.ultrasonicMode.load();
+        model_.ultrasonicPowered = board::ultrasonic.isPowered();
+        requestFullRedraw();
+        render();
+    }
+
+    void SerialCli::onDisconnected()
+    {
+        dirty_ = false;
+        screen_.leave();
+    }
+
+    void SerialCli::markDirty()
+    {
+        dirty_ = true;
+    }
+
+    void SerialCli::requestFullRedraw()
+    {
+        fullRedrawPending_ = true;
+        markDirty();
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    //  Rendering
+
+    void SerialCli::drawChrome()
+    {
+        screen_.put(static_cast<uint8_t>((cli::kScreenWidth - strlen(kTitle)) / 2 + 1), kHeaderRow, kTitle,
+                    theme::kHeader);
+        screen_.fillRow(kTopRuleRow, '=', theme::kFrame);
+        screen_.fillRow(kBottomRuleRow, '=', theme::kFrame);
+
+        uint8_t x = 3;
+        for (const KeyHint &hint : kKeyHints)
+        {
+            screen_.put(x, kFooterRow, hint.key, theme::kFooterKey);
+            x += strlen(hint.key);
+            screen_.put(x, kFooterRow, " : ", theme::kFooterText);
+            x += 3;
+            screen_.put(x, kFooterRow, hint.desc, theme::kFooterText);
+            x += strlen(hint.desc) + 3;
+        }
+    }
+
+    void SerialCli::drawTabs()
+    {
+        screen_.fillRow(kTabsRow, ' ', theme::kText);
+
+        uint8_t x = 2;
+        for (uint8_t i = 0; i < cli::kTabCount; ++i)
+        {
+            char label[16];
+            snprintf(label, sizeof label, " %s ", cli::kPages[i].tabLabel);
+            screen_.put(x, kTabsRow, label, i == model_.activeTab ? theme::kTabActive : theme::kTabIdle);
+            x += kTabStep;
+        }
+    }
+
+    void SerialCli::drawField(const cli::Field &field)
+    {
+        char text[cli::kFieldTextMax];
+        field.format(model_, text, sizeof text);
+        screen_.field(field.x, field.y, field.w, text, fieldStyle(field, model_));
+    }
+
+    void SerialCli::drawPage()
+    {
+        const cli::Page &page = cli::kPages[model_.activeTab];
+        page.drawStatic(screen_);
+        for (uint8_t i = 0; i < page.fieldCount; ++i)
+        {
+            drawField(page.fields[i]);
+        }
+    }
+
+    void SerialCli::drawChangedFields()
+    {
+        const cli::Page &page = cli::kPages[model_.activeTab];
+        char before[cli::kFieldTextMax];
+        char after[cli::kFieldTextMax];
+
+        for (uint8_t i = 0; i < page.fieldCount; ++i)
+        {
+            const cli::Field &field = page.fields[i];
+            field.format(rendered_, before, sizeof before);
+            field.format(model_, after, sizeof after);
+            cli::Style style = fieldStyle(field, model_);
+            if (strcmp(before, after) == 0 && style == fieldStyle(field, rendered_))
+            {
+                continue;
+            }
+            screen_.field(field.x, field.y, field.w, after, style);
+        }
+    }
+
+    void SerialCli::render()
+    {
+        if (!connected_ || !dirty_)
+        {
+            return;
+        }
+
+        model_.ultrasonicMode = debugControls.ultrasonicMode.load();
+        model_.ultrasonicPowered = board::ultrasonic.isPowered();
+        dirty_ = false;
+
+        if (fullRedrawPending_)
+        {
+            fullRedrawPending_ = false;
+            screen_.enter();
+            drawChrome();
+            drawTabs();
+            drawPage();
+        }
+        else if (model_.activeTab != rendered_.activeTab)
+        {
+            // Page switch: repaint tabs and content area only; header,
+            // rules and footer stay untouched.
+            drawTabs();
+            screen_.fillRows(kContentTop, kContentBottom, theme::kText);
+            drawPage();
+        }
+        else
+        {
+            drawChangedFields();
+        }
+
+        rendered_ = model_;
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    //  Navigation and actions
+
+    void SerialCli::moveTab(int delta)
+    {
+        int count = cli::kTabCount;
+        model_.activeTab = static_cast<uint8_t>((model_.activeTab + delta + count) % count);
+
+        uint8_t selectable = cli::kPages[model_.activeTab].selectableCount;
+        uint8_t &current = model_.selection[model_.activeTab];
+        if (selectable == 0)
+        {
+            current = 0;
+        }
+        else if (current >= selectable)
+        {
+            current = selectable - 1;
+        }
+        markDirty();
+    }
+
+    void SerialCli::moveSelection(int delta)
+    {
+        uint8_t selectable = cli::kPages[model_.activeTab].selectableCount;
+        if (selectable == 0)
+        {
+            return;
+        }
+
+        uint8_t &current = model_.selection[model_.activeTab];
+        int next = static_cast<int>(current) + delta;
+        if (next < 0)
+        {
+            next = selectable - 1;
+        }
+        else if (next >= selectable)
+        {
+            next = 0;
+        }
+
+        current = static_cast<uint8_t>(next);
+        markDirty();
+    }
+
+    void SerialCli::activateSelection()
+    {
+        switch (model_.activeTab)
+        {
+        case cli::kTabOutputs:
+        {
+            uint8_t selection = model_.selection[cli::kTabOutputs];
+            if (selection < cli::kOutputCount)
+            {
+                toggleOutput(selection);
+            }
+            else
+            {
+                cycleUltraMode();
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    void SerialCli::cycleUltraMode()
+    {
+        // Cycle in UI order: AUTO -> ON -> OFF -> AUTO.
+        uint8_t next = cli::kModeAuto;
+        switch (debugControls.ultrasonicMode.load())
+        {
+        case cli::kModeAuto:
+            next = cli::kModeOn;
+            break;
+        case cli::kModeOn:
+            next = cli::kModeOff;
+            break;
+        default:
+            next = cli::kModeAuto;
+            break;
+        }
+
+        debugControls.ultrasonicMode.store(next);
+        markDirty();
+    }
+
+    void SerialCli::toggleOutput(uint8_t index)
+    {
+        switch (index)
+        {
+        case 0:
+            board::relay1.set(!model_.relay1);
+            model_.relay1 = board::relay1.isOn();
+            break;
+        case 1:
+            board::relay2.set(!model_.relay2);
+            model_.relay2 = board::relay2.isOn();
+            break;
+        case 2:
+            board::led1.set(!model_.led1);
+            model_.led1 = board::led1.isOn();
+            break;
+        case 3:
+            board::led2.set(!model_.led2);
+            model_.led2 = board::led2.isOn();
+            break;
+        case 4:
+            model_.onboard = !model_.onboard;
+            board::onboardLed.setColor(0, model_.onboard ? 32 : 0, 0);
+            break;
+        default:
+            break;
+        }
+
+        markDirty();
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    //  Input handling
+
+    void SerialCli::handleInputByte(char c)
+    {
+        switch (inputState_)
+        {
+        case InputState::kIdle:
+            if (c == 27)
+            {
+                inputState_ = InputState::kEsc;
+            }
+            else if (c == '\r' || c == '\n' || c == ' ')
+            {
+                activateSelection();
+            }
+            else if (c == '\t')
+            {
+                moveTab(1);
+            }
+            else if (c == 'r' || c == 'R' || c == 12) // 12 = Ctrl+L
+            {
+                requestFullRedraw();
+            }
+            break;
+
+        case InputState::kEsc:
+            inputState_ = (c == '[') ? InputState::kCsi : InputState::kIdle;
+            break;
+
+        case InputState::kCsi:
+            inputState_ = InputState::kIdle;
+            switch (c)
+            {
+            case 'A':
+                moveSelection(-1);
+                break;
+            case 'B':
+                moveSelection(1);
+                break;
+            case 'C':
+                moveTab(1);
+                break;
+            case 'D':
+                moveTab(-1);
+                break;
+            default:
+                break;
+            }
+            break;
+        }
+    }
+
+    void SerialCli::pollInput()
+    {
+        if (!updateConnectionState())
+        {
+            return;
+        }
+
+        while (Serial.available() > 0)
+        {
+            int value = Serial.read();
+            if (value < 0)
+            {
+                break;
+            }
+
+            handleInputByte(static_cast<char>(value));
+        }
+
+        render();
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    //  Events from the sensor tasks
+
+    void SerialCli::handleEvent(const Event &ev)
+    {
+        switch (ev.type)
+        {
+        case EventType::kPirMotionStarted:
+            model_.pir = true;
+            board::relay1.on();
+            board::onboardLed.setColor(0, 32, 0);
+            model_.relay1 = board::relay1.isOn();
+            markDirty();
+            break;
+
+        case EventType::kInputChanged:
+            if (ev.index == 0)
+            {
+                model_.input1 = ev.state;
+                board::led1.set(ev.state);
+                model_.led1 = board::led1.isOn();
+            }
+            else
+            {
+                model_.input2 = ev.state;
+                board::led2.set(ev.state);
+                model_.led2 = board::led2.isOn();
+            }
+            markDirty();
+            break;
+
+        case EventType::kPirChanged:
+            model_.pir = ev.state;
+            markDirty();
+            break;
+
+        case EventType::kDipChanged:
+            model_.dipValue = ev.index;
+            markDirty();
+            break;
+
+        case EventType::kUltrasonicReading:
+            model_.distanceCm = ev.distanceCm;
+            model_.ultrasonicTimeout = false;
+            markDirty();
+            break;
+
+        case EventType::kUltrasonicTimeout:
+            model_.ultrasonicTimeout = true;
+            markDirty();
+            break;
+        }
+    }
+
+} // namespace app

@@ -23,6 +23,11 @@ The firmware runs on the FreeRTOS SMP port bundled with the arduino-pico core, e
   - `hal_ultrasonic` — HC-SR04-compatible sensor with power gating.
   - `hal_led` — carrier-board status LEDs (`Led`) and the RP2040-Tiny module's onboard WS2812 RGB LED (`OnboardRgbLed`).
   - `hal_dip_switch` — 5-position hardware configuration DIP switch (microswitches), decoded to a single 0-31 value.
+- `src/main.cpp` — FreeRTOS entry point: initializes the board and starts the app tasks.
+- `src/app/` — RTOS application layer on top of the HAL:
+  - `board.h/.cpp` — single aggregation point for all HAL instances.
+  - `events.h` — POD event types flowing through the FreeRTOS queue.
+  - `tasks.*` — task topology: `sensorsTask` (5 ms polling of inputs/PIR/DIP) and `ultrasonicTask` produce events into `eventQueue`; `controlTask` consumes them and owns all actuators and UART output (so no serial mutex is needed). `ultrasonicTask` implements the two-rate scan policy from `docs/architecture-plan.md` (1/min baseline, 1/s for a sliding 60 s window after a stimulus, sensor power-gated in baseline mode) and is woken early by a task notification on PIR/input stimulus.
 - `test/test_hal_logic/` — Unity tests for `include/hal/logic/`, run on the host via the `native` environment.
 
 ## Scope of this HAL phase

@@ -12,6 +12,7 @@ namespace app
     eventQueue = xQueueCreate(16, sizeof(Event));
 
     // Control first so no early event is dropped, then producers.
+    startControlTask();
     startUltrasonicTask();
     startSensorsTask();
   }
