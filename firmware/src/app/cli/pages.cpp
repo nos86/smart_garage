@@ -362,6 +362,58 @@ namespace app
 
             static_assert(kMaxRtosTasks == 12, "kRtosFields task rows must match kMaxRtosTasks");
 
+            ////////////////////////////////////////////////////////////////
+            //  CAN page (transceiver/HAL level -- see CANOPEN for protocol
+            //  state, added once that layer exists)
+
+            void fmtCanLinkState(const Model &m, char *buf, size_t len)
+            {
+                copyText(buf, len, m.canOk ? "UP" : "DOWN");
+            }
+
+            Style styleCanLinkState(const Model &m)
+            {
+                return m.canOk ? theme::kActive : theme::kValue;
+            }
+
+            void fmtCanRxCount(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%lu", static_cast<unsigned long>(m.canRxCount));
+            }
+
+            void fmtCanErrorFlags(const Model &m, char *buf, size_t len)
+            {
+                if (m.canErrorFlags == 0)
+                {
+                    copyText(buf, len, "none");
+                    return;
+                }
+                snprintf(buf, len, "0x%02X", static_cast<unsigned>(m.canErrorFlags));
+            }
+
+            Style styleCanErrorFlags(const Model &m)
+            {
+                return m.canErrorFlags == 0 ? theme::kValue : theme::kActive;
+            }
+
+            void drawCanStatic(Screen &screen)
+            {
+                screen.frame({1, 5, 40, 13}, "MCP25625 TRANSCEIVER");
+
+                screen.put(3, 8, "Link:", theme::kText);
+                screen.put(3, 9, "RX frames:", theme::kText);
+                screen.put(3, 10, "Errors:", theme::kText);
+
+                screen.put(3, 15, "Read-only HAL diagnostics.", theme::kHelp);
+                screen.put(3, 16, "Loopback self-test runs at boot.", theme::kHelp);
+            }
+
+            constexpr Field kCanFields[] = {
+                {14, 8, 6, fmtCanLinkState, styleCanLinkState},
+                {14, 9, 10, fmtCanRxCount, nullptr},
+                {14, 10, 10, fmtCanErrorFlags, styleCanErrorFlags},
+            };
+
         } // namespace
 
         const Page kPages[kTabCount] = {
@@ -369,6 +421,7 @@ namespace app
             {"INPUTS", drawInputsStatic, kInputsFields, sizeof(kInputsFields) / sizeof(Field), 0},
             {"OUTPUTS", drawOutputsStatic, kOutputsFields, sizeof(kOutputsFields) / sizeof(Field), kOutputCount + 1},
             {"RTOS", drawRtosStatic, kRtosFields, sizeof(kRtosFields) / sizeof(Field), 0},
+            {"CAN", drawCanStatic, kCanFields, sizeof(kCanFields) / sizeof(Field), 0},
         };
 
     } // namespace cli

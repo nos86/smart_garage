@@ -16,7 +16,10 @@ namespace app
         constexpr uint8_t kTabInputs = 1;
         constexpr uint8_t kTabOutputs = 2;
         constexpr uint8_t kTabRtos = 3;
-        constexpr uint8_t kTabCount = 4;
+        constexpr uint8_t kTabCan = 4;
+        constexpr uint8_t kTabCanOpen = 5;
+        constexpr uint8_t kTabCount = 6;
+
 
         constexpr uint8_t kOutputCount = 5;
 
@@ -78,6 +81,9 @@ namespace app
             uint32_t rtosFreeHeapBytes = 0;
             uint32_t rtosTotalHeapBytes = 0;
             uint32_t rtosUptimeMs = 0;
+            bool canOk = false;
+            uint32_t canRxCount = 0;
+            uint8_t canErrorFlags = 0;
             uint8_t activeTab = kTabStatus;
             uint8_t selection[kTabCount] = {};
         };

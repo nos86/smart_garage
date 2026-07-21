@@ -4,6 +4,7 @@
 // peripheral objects. Construction is static; call board::init() once before
 // starting the scheduler-driven tasks.
 
+#include "can_transceiver.h"
 #include "digital_input.h"
 #include "dip_switch.h"
 #include "led.h"
@@ -24,6 +25,12 @@ extern hal::Led led1;
 extern hal::Led led2;
 extern hal::OnboardRgbLed onboardLed;
 extern hal::DipSwitch dipSwitch;
+extern hal::CanTransceiver can;
+
+// Result of the CAN loopback self-test run once by init(). Diagnostic only
+// -- init() does not fail/abort if this is false, it just leaves canOk()
+// reporting the problem so the CLI's CAN tab can surface it.
+bool canOk();
 
 void init();
 

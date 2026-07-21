@@ -31,6 +31,7 @@ Application logic and hardware access stay in `src/app/serial_cli.cpp`.
     - INPUTS (adds the last ultrasonic reading; shows "disabled" when the sensor mode is OFF)
     - OUTPUTS (adds the ultrasonic activation mode as a cyclable OFF/ON/AUTO row)
     - RTOS (read-only FreeRTOS task table: state, priority, free stack, CPU share, plus heap/uptime)
+    - CAN (read-only MCP25625 transceiver diagnostics: link state from the boot-time loopback self-test, RX frame count, error flags)
 
 ## How rendering works
 

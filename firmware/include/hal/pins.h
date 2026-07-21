@@ -4,9 +4,8 @@
 // Source: hardware/README.md GPIO table (schematic-derived; verify against
 // EasyEDA sources before relying on unconfirmed entries).
 //
-// This HAL phase covers isolated inputs, relays, PIR, ultrasonic, LEDs and
-// the DIP/microswitch bank. The MCP25625 CAN controller pins (GP2-GP8) are
-// intentionally not wrapped here yet.
+// This HAL phase covers isolated inputs, relays, PIR, ultrasonic, LEDs,
+// the DIP/microswitch bank, and the MCP25625 CAN controller.
 
 #include <cstdint>
 
@@ -18,8 +17,18 @@ namespace hal::pins
     constexpr uint8_t kInput1 = 0;
     constexpr uint8_t kInput2 = 1;
 
-    // GP2-GP6 are reserved for the MCP25625 CAN controller (SPI + INT) --
-    // out of scope for this HAL phase. GP7/GP8 are used by status LEDs.
+    // MCP25625 CAN controller (SPI0 + interrupt). Reset is done via the
+    // chip's SPI soft-reset instruction (no RST GPIO wired); STBY is never
+    // asserted -- the chip stays always-active per architecture-plan.md (no
+    // STBY GPIO wired either). GP7/GP8 stay assigned to LED2/LED1 (existing
+    // wiring, see below) -- hardware/README.md's GPIO table used to list
+    // GP7=MCP_RST/GP8=MCP_STBY, which conflicted with the LEDs already
+    // implemented here; resolved by not wiring RST/STBY as GPIOs at all.
+    constexpr uint8_t kCanSck = 2;
+    constexpr uint8_t kCanMosi = 3;
+    constexpr uint8_t kCanMiso = 4;
+    constexpr uint8_t kCanCs = 5;
+    constexpr uint8_t kCanInt = 6;
 
     // Hardware configuration DIP switch / microswitches (SW1, active-low: each
     // line pulled high externally via 1k, pulled low when the switch is closed).

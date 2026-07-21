@@ -100,6 +100,7 @@ namespace app
         model_.dipValue = board::dipSwitch.read();
         model_.ultrasonicMode = debugControls.ultrasonicMode.load();
         model_.ultrasonicPowered = board::ultrasonic.isPowered();
+        model_.canOk = board::canOk();
         requestFullRedraw();
         render();
     }

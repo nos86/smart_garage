@@ -44,5 +44,6 @@ namespace app
     void startSensorsTask();
     void startUltrasonicTask();
     void startControlTask();
+    void startCanTask();
 
 } // namespace app
