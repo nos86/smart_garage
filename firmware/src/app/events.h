@@ -16,6 +16,11 @@ namespace app
     kDipChanged,        // DIP value changed; index = new 0-31 value
     kUltrasonicReading, // distanceCm holds the measurement
     kUltrasonicTimeout, // no echo within timeout
+    kCanFrameReceived,  // a frame was drained from the MCP25625 RX buffers
+    kCanError,          // index = current hal::CanTransceiver::errorFlags()
+    kCanopenNodeId,     // index = CANopen node-ID in use, sent once after init
+    kNmtStateChanged,   // index = one of cli::kNmt* (see cli/model.h)
+    kHeartbeatSent,     // the HB producer just sent a heartbeat
   };
 
   struct Event

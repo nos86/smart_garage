@@ -20,6 +20,14 @@ namespace app
         constexpr uint8_t kTabCanOpen = 5;
         constexpr uint8_t kTabCount = 6;
 
+        // Compact NMT state encoding chosen by this app layer (not
+        // CANopenNode's own CO_NMT_internalState_t raw values, which this
+        // layer stays free of so it needs no CANopenNode include). Mapped
+        // in src/app/task_canopen.cpp when it emits EventType::kNmtStateChanged.
+        constexpr uint8_t kNmtInitializing = 0;
+        constexpr uint8_t kNmtPreOperational = 1;
+        constexpr uint8_t kNmtOperational = 2;
+        constexpr uint8_t kNmtStopped = 3;
 
         constexpr uint8_t kOutputCount = 5;
 
@@ -84,6 +92,10 @@ namespace app
             bool canOk = false;
             uint32_t canRxCount = 0;
             uint8_t canErrorFlags = 0;
+            uint8_t nmtState = kNmtInitializing;
+            uint8_t canopenNodeId = 0;
+            uint32_t heartbeatCount = 0;
+            uint32_t lastHeartbeatMs = 0;
             uint8_t activeTab = kTabStatus;
             uint8_t selection[kTabCount] = {};
         };

@@ -414,6 +414,78 @@ namespace app
                 {14, 10, 10, fmtCanErrorFlags, styleCanErrorFlags},
             };
 
+            ////////////////////////////////////////////////////////////////
+            //  CANOPEN page (protocol level -- see CAN for raw transceiver
+            //  diagnostics)
+
+            const char *nmtStateLabel(uint8_t state)
+            {
+                switch (state)
+                {
+                case kNmtOperational:
+                    return "OPERATIONAL";
+                case kNmtStopped:
+                    return "STOPPED";
+                case kNmtPreOperational:
+                    return "PRE-OPERATIONAL";
+                default:
+                    return "INITIALIZING";
+                }
+            }
+
+            void fmtNmtState(const Model &m, char *buf, size_t len)
+            {
+                copyText(buf, len, nmtStateLabel(m.nmtState));
+            }
+
+            Style styleNmtState(const Model &m)
+            {
+                return m.nmtState == kNmtOperational ? theme::kActive : theme::kValue;
+            }
+
+            void fmtCanopenNodeId(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%u", static_cast<unsigned>(m.canopenNodeId));
+            }
+
+            void fmtHeartbeatCount(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%lu", static_cast<unsigned long>(m.heartbeatCount));
+            }
+
+            void fmtLastHeartbeat(const Model &m, char *buf, size_t len)
+            {
+                if (m.heartbeatCount == 0)
+                {
+                    copyText(buf, len, "n/a");
+                    return;
+                }
+                // Uptime timestamp of the last heartbeat, not a live
+                // countdown -- this layer has no Arduino/millis() dependency
+                // (see file header), same reasoning as fmtRtosUptime.
+                snprintf(buf, len, "t+%lu ms", static_cast<unsigned long>(m.lastHeartbeatMs));
+            }
+
+            void drawCanopenStatic(Screen &screen)
+            {
+                screen.frame({1, 5, 40, 13}, "CANOPEN NODE");
+
+                screen.put(3, 8, "NMT state:", theme::kText);
+                screen.put(3, 9, "Node-ID:", theme::kText);
+                screen.put(3, 10, "Heartbeats sent:", theme::kText);
+                screen.put(3, 11, "Last heartbeat:", theme::kText);
+
+                screen.put(3, 15, "Read-only protocol diagnostics.", theme::kHelp);
+                screen.put(3, 16, "NMT self-starts -- no master needed.", theme::kHelp);
+            }
+
+            constexpr Field kCanopenFields[] = {
+                {20, 8, 16, fmtNmtState, styleNmtState},
+                {20, 9, 6, fmtCanopenNodeId, nullptr},
+                {20, 10, 10, fmtHeartbeatCount, nullptr},
+                {20, 11, 16, fmtLastHeartbeat, nullptr},
+            };
+
         } // namespace
 
         const Page kPages[kTabCount] = {
@@ -422,6 +494,7 @@ namespace app
             {"OUTPUTS", drawOutputsStatic, kOutputsFields, sizeof(kOutputsFields) / sizeof(Field), kOutputCount + 1},
             {"RTOS", drawRtosStatic, kRtosFields, sizeof(kRtosFields) / sizeof(Field), 0},
             {"CAN", drawCanStatic, kCanFields, sizeof(kCanFields) / sizeof(Field), 0},
+            {"CANOPEN", drawCanopenStatic, kCanopenFields, sizeof(kCanopenFields) / sizeof(Field), 0},
         };
 
     } // namespace cli

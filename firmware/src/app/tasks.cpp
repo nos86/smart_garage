@@ -18,6 +18,7 @@ namespace app
     startUltrasonicTask();
     startSensorsTask();
     startCanTask();
+    startCanopenTask();
   }
 
 } // namespace app

@@ -532,6 +532,32 @@ namespace app
             model_.ultrasonicTimeout = true;
             markDirty();
             break;
+
+        case EventType::kCanFrameReceived:
+            ++model_.canRxCount;
+            markDirty();
+            break;
+
+        case EventType::kCanError:
+            model_.canErrorFlags = ev.index;
+            markDirty();
+            break;
+
+        case EventType::kCanopenNodeId:
+            model_.canopenNodeId = ev.index;
+            markDirty();
+            break;
+
+        case EventType::kNmtStateChanged:
+            model_.nmtState = ev.index;
+            markDirty();
+            break;
+
+        case EventType::kHeartbeatSent:
+            ++model_.heartbeatCount;
+            model_.lastHeartbeatMs = millis();
+            markDirty();
+            break;
         }
     }
 

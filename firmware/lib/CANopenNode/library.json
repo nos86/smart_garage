@@ -1,0 +1,24 @@
+{
+  "name": "CANopenNode",
+  "version": "4.1.0",
+  "description": "Vendored CANopenNode stack (git submodule in vendor/), scoped to the subset needed for this project's minimal bring-up: NMT/Heartbeat, HBconsumer, Emergency, SDOserver, TIME, SYNC, PDO, LEDs, LSSslave, storage. example/ is excluded -- it is a set of templates meant to be copied and adapted (see src/app/canopen/), not compiled in place (main_blank.c defines its own main(), which would collide with Arduino's setup()/loop()).",
+  "build": {
+    "srcDir": "vendor",
+    "includeDir": "vendor",
+    "srcFilter": [
+      "+<CANopen.c>",
+      "+<301/*.c>",
+      "+<303/CO_LEDs.c>",
+      "+<305/CO_LSSslave.c>",
+      "+<storage/CO_storage.c>",
+      "-<example/*>",
+      "-<304/*>",
+      "-<305/CO_LSSmaster.c>",
+      "-<309/*>",
+      "-<extra/*>",
+      "-<storage/CO_storageEeprom.c>",
+      "-<301/CO_SDOclient.c>",
+      "-<doc/*>"
+    ]
+  }
+}
