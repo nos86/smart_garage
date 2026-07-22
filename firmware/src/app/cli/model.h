@@ -29,7 +29,11 @@ namespace app
         constexpr uint8_t kNmtOperational = 2;
         constexpr uint8_t kNmtStopped = 3;
 
-        constexpr uint8_t kOutputCount = 5;
+        // Forceable outputs on the OUTPUTS tab: relay1, relay2, onboard RGB.
+        // LED1/LED2 are excluded -- they are CiA 303-3 run/error indicators
+        // driven by the CANopen stack (see task_canopen.cpp), not
+        // user-forceable, and shown read-only on the CANOPEN tab instead.
+        constexpr uint8_t kOutputCount = 3;
 
         // Raw bit values of MCP2515::EFLG (autowp-mcp2515's can.h/mcp2515.h),
         // mirrored here so this layer needs no HAL/driver includes.
@@ -89,8 +93,8 @@ namespace app
             uint8_t dipValue = 0;
             bool relay1 = false;
             bool relay2 = false;
-            bool led1 = false;
-            bool led2 = false;
+            bool led1 = false; // CiA 303-3 green run indicator (task_canopen.cpp), read-only
+            bool led2 = false; // CiA 303-3 red error indicator (task_canopen.cpp), read-only
             bool onboard = false;
             float distanceCm = -1.0f;
             bool ultrasonicTimeout = false;

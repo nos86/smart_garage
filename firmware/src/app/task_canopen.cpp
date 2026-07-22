@@ -15,9 +15,11 @@
 // "every node promotes itself to Operational at end of local init" decision,
 // object 1F80h in the CiA 301 text this was modeled on), heartbeat
 // producer, respond to basic SDO reads against CANopenNode's shipped
-// default Object Dictionary (src/app/canopen/OD.c). Full custom OD design,
-// COB-ID/priority scheme, NMT master supervision, and OTA are explicitly
-// deferred -- see the architecture doc's P0/P1 backlog.
+// default Object Dictionary (src/app/canopen/OD.c), and drive board::led1/
+// led2 as the CiA 303-3 run/error indicator pair via CANopenNode's LEDs
+// module. Full custom OD design, COB-ID/priority scheme, NMT master
+// supervision, and OTA are explicitly deferred -- see the architecture
+// doc's P0/P1 backlog.
 
 namespace app
 {
@@ -162,6 +164,39 @@ namespace app
       lastTimer = timer;
     }
 
+    void reportLedStateIfChanged(uint8_t index, bool state, bool &lastState)
+    {
+      if (state == lastState)
+      {
+        return;
+      }
+      lastState = state;
+      Event ev{EventType::kLedStateChanged, index, state};
+      xQueueSend(eventQueue, &ev, 0);
+    }
+
+    // Drives LED1/LED2 as the CiA 303-3 indicator pair (green run / red
+    // error) computed by CANopenNode's LEDs module (CO_CONFIG_LEDS is
+    // enabled by default and not overridden -- see
+    // src/app/canopen/CO_driver_target.h), instead of leaving that output
+    // unread. Must run every cycle, not just on change, since the module's
+    // blink/flicker/flash patterns need continuous re-evaluation of the
+    // same logical state.
+    void applyLedIndicators(const CO_t *co, bool &lastLed1, bool &lastLed2)
+    {
+      if (co->LEDs == nullptr)
+      {
+        return;
+      }
+
+      bool runOn = CO_LED_GREEN(co->LEDs, CO_LED_CANopen) != 0;
+      bool errorOn = CO_LED_RED(co->LEDs, CO_LED_CANopen) != 0;
+      board::led1.set(runOn);
+      board::led2.set(errorOn);
+      reportLedStateIfChanged(0, runOn, lastLed1);
+      reportLedStateIfChanged(1, errorOn, lastLed2);
+    }
+
     void canopenTask(void *)
     {
       CO_t *co = nullptr;
@@ -181,6 +216,8 @@ namespace app
 
       CO_NMT_internalState_t lastNmtState = CO_NMT_INITIALIZING;
       uint32_t lastHbTimer = 0;
+      bool lastLed1State = false;
+      bool lastLed2State = false;
       uint32_t lastCallMicros = micros();
 
       TickType_t lastWake = xTaskGetTickCount();
@@ -199,6 +236,8 @@ namespace app
           reportNmtStateIfChanged(co->NMT->operatingState, lastNmtState);
           reportHeartbeatIfSent(co->NMT->HBproducerTimer, lastHbTimer);
         }
+
+        applyLedIndicators(co, lastLed1State, lastLed2State);
       }
     }
 

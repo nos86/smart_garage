@@ -366,14 +366,6 @@ namespace app
             model_.relay2 = board::relay2.isOn();
             break;
         case 2:
-            board::led1.set(!model_.led1);
-            model_.led1 = board::led1.isOn();
-            break;
-        case 3:
-            board::led2.set(!model_.led2);
-            model_.led2 = board::led2.isOn();
-            break;
-        case 4:
             model_.onboard = !model_.onboard;
             board::onboardLed.setColor(0, model_.onboard ? 32 : 0, 0);
             break;
@@ -564,14 +556,10 @@ namespace app
             if (ev.index == 0)
             {
                 model_.input1 = ev.state;
-                board::led1.set(ev.state);
-                model_.led1 = board::led1.isOn();
             }
             else
             {
                 model_.input2 = ev.state;
-                board::led2.set(ev.state);
-                model_.led2 = board::led2.isOn();
             }
             markDirty();
             break;
@@ -622,6 +610,18 @@ namespace app
         case EventType::kHeartbeatSent:
             ++model_.heartbeatCount;
             model_.lastHeartbeatMs = millis();
+            markDirty();
+            break;
+
+        case EventType::kLedStateChanged:
+            if (ev.index == 0)
+            {
+                model_.led1 = ev.state;
+            }
+            else
+            {
+                model_.led2 = ev.state;
+            }
             markDirty();
             break;
         }

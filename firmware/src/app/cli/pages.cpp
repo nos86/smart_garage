@@ -80,7 +80,7 @@ namespace app
                 fmtDistance(m, buf, len);
             }
 
-            constexpr const char *kOutputLabels[kOutputCount] = {"Relay 1", "Relay 2", "LED 1", "LED 2", "RGB"};
+            constexpr const char *kOutputLabels[kOutputCount] = {"Relay 1", "Relay 2", "RGB"};
 
             bool outputState(const Model &m, uint8_t index)
             {
@@ -90,14 +90,35 @@ namespace app
                     return m.relay1;
                 case 1:
                     return m.relay2;
-                case 2:
-                    return m.led1;
-                case 3:
-                    return m.led2;
                 default:
                     return m.onboard;
                 }
             }
+
+            // LED1/LED2 are not part of the forceable outputs array above --
+            // they are CiA 303-3 indicators driven by the CANopen stack
+            // (task_canopen.cpp). Shown read-only, on STATUS and CANOPEN.
+            void fmtLed1Summary(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%-8s %s", "LED 1", m.led1 ? "ON" : "OFF");
+            }
+
+            Style styleLed1Summary(const Model &m) { return m.led1 ? theme::kActive : theme::kValue; }
+
+            void fmtLed2Summary(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%-8s %s", "LED 2", m.led2 ? "ON" : "OFF");
+            }
+
+            Style styleLed2Summary(const Model &m) { return m.led2 ? theme::kActive : theme::kValue; }
+
+            void fmtLed1State(const Model &m, char *buf, size_t len) { copyText(buf, len, m.led1 ? "ON" : "OFF"); }
+
+            Style styleLed1State(const Model &m) { return m.led1 ? theme::kActive : theme::kValue; }
+
+            void fmtLed2State(const Model &m, char *buf, size_t len) { copyText(buf, len, m.led2 ? "ON" : "OFF"); }
+
+            Style styleLed2State(const Model &m) { return m.led2 ? theme::kActive : theme::kValue; }
 
             template <uint8_t I>
             void fmtOutputSummary(const Model &m, char *buf, size_t len)
@@ -185,9 +206,9 @@ namespace app
                 {8, 11, 12, fmtDip, nullptr},
                 {29, 8, 13, fmtOutputSummary<0>, styleOutputSummary<0>},
                 {29, 9, 13, fmtOutputSummary<1>, styleOutputSummary<1>},
-                {29, 10, 13, fmtOutputSummary<2>, styleOutputSummary<2>},
-                {29, 11, 13, fmtOutputSummary<3>, styleOutputSummary<3>},
-                {29, 12, 13, fmtOutputSummary<4>, styleOutputSummary<4>},
+                {29, 10, 13, fmtLed1Summary, styleLed1Summary},
+                {29, 11, 13, fmtLed2Summary, styleLed2Summary},
+                {29, 12, 13, fmtOutputSummary<2>, styleOutputSummary<2>},
                 {62, 8, 5, fmtUltraMode, nullptr},
                 {62, 9, 4, fmtUltraPower, styleUltraPower},
                 {62, 10, 12, fmtDistance, nullptr},
@@ -234,14 +255,13 @@ namespace app
                 screen.put(47, 9, "Enter   : toggle / cycle mode", theme::kHelp);
                 screen.put(47, 10, "Tab     : next page", theme::kHelp);
                 screen.put(47, 12, "PIR cannot be forced here.", theme::kHelp);
+                screen.put(47, 13, "LED1/LED2: see CANOPEN tab.", theme::kHelp);
             }
 
             constexpr Field kOutputsFields[] = {
                 {3, 8, 38, fmtOutputRow<0>, styleOutputRow<0>},
                 {3, 9, 38, fmtOutputRow<1>, styleOutputRow<1>},
                 {3, 10, 38, fmtOutputRow<2>, styleOutputRow<2>},
-                {3, 11, 38, fmtOutputRow<3>, styleOutputRow<3>},
-                {3, 12, 38, fmtOutputRow<4>, styleOutputRow<4>},
                 {3, 14, 38, fmtUltraModeRow, styleUltraModeRow},
             };
 
@@ -599,6 +619,8 @@ namespace app
                 screen.put(3, 9, "Node-ID:", theme::kText);
                 screen.put(3, 10, "Heartbeats sent:", theme::kText);
                 screen.put(3, 11, "Last heartbeat:", theme::kText);
+                screen.put(3, 12, "RUN LED (LED1):", theme::kText);
+                screen.put(3, 13, "ERROR LED (LED2):", theme::kText);
 
                 screen.put(3, 15, "Read-only protocol diagnostics.", theme::kHelp);
                 screen.put(3, 16, "NMT self-starts -- no master needed.", theme::kHelp);
@@ -609,6 +631,8 @@ namespace app
                 {20, 9, 6, fmtCanopenNodeId, nullptr},
                 {20, 10, 10, fmtHeartbeatCount, nullptr},
                 {20, 11, 16, fmtLastHeartbeat, nullptr},
+                {23, 12, 4, fmtLed1State, styleLed1State},
+                {23, 13, 4, fmtLed2State, styleLed2State},
             };
 
         } // namespace
