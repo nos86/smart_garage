@@ -7,9 +7,9 @@ Documento vivo. Raccoglie le decisioni prese durante il brainstorming architettu
 | # | Requisito | Stato |
 |---|-----------|-------|
 | 1 | Comunicazione decentralizzata, tollerante a nodi/master down | Deciso a livello architetturale |
-| 2 | Protocollo CANopen | Da approfondire (scelta stack, design OD) |
+| 2 | Protocollo CANopen | **Deciso** — stack CANopenNode v4.1 e design OD/rete in [canopen-network-spec.md](canopen-network-spec.md) |
 | 3 | Riprogrammabile via CAN | Parzialmente aperto (chi innesca l'OTA senza master) |
-| 4 | Configurabile via CAN | Da approfondire |
+| 4 | Configurabile via CAN | **Deciso** — tabella regole + etichette in area 2000h, persistenza flash A/B; vedi [canopen-network-spec.md](canopen-network-spec.md) §5, §8 |
 | 5 | Diagnostica via CAN + UART (testi/colori) | UART deciso; lato CAN da approfondire |
 | 6 | Messaggistica realtime tra nodi | Deciso a livello architetturale |
 | 7 | Consumi minimi in standby | Deciso a livello architetturale, da validare con numeri reali |
@@ -83,12 +83,14 @@ Questa checklist resta come backlog tecnico, ma viene affrontata solo dopo l'imp
 
 ### P0 - Blocca l'implementazione core
 
-- [ ] Definire lo stack CANopen da usare e i criteri di scelta.
-- [ ] Progettare l'Object Dictionary minimo comune a tutti i nodi.
-- [ ] Fissare node-ID, schema di indirizzamento e regole per il DIP a 5 bit.
-- [ ] Definire mappa COB-ID, priorità e traffico realtime vs bulk.
-- [ ] Specificare comportamento NMT, heartbeat, emergency e stato di startup.
-- [ ] Chiarire la policy definitiva del pin MCP_STBY e il comportamento CAN controller in standby.
+Tutte le voci P0 sono **chiuse a livello di specifica** da [canopen-network-spec.md](canopen-network-spec.md) (2026-07-22); l'implementazione segue la spec (vedi §11 della spec per il riepilogo dei lavori).
+
+- [x] Definire lo stack CANopen da usare e i criteri di scelta → CANopenNode v4.1 (spec §1).
+- [x] Progettare l'Object Dictionary minimo comune a tutti i nodi → ibrido CiA 401 (6000h) + manufacturer (2000h): etichette di ruolo e tabella regole autodescrittive (spec §4–5).
+- [x] Fissare node-ID, schema di indirizzamento e regole per il DIP a 5 bit → **LSS con node-ID persistito in flash** (sostituisce il provvisorio node-ID = DIP+1 di `task_canopen.cpp`); DIP=0 normale, DIP≠0 override da banco (spec §3).
+- [x] Definire mappa COB-ID, priorità e traffico realtime vs bulk → pre-defined connection set, TPDO event-driven, budget verificato ≤71 ms worst-case (spec §6).
+- [x] Specificare comportamento NMT, heartbeat, emergency e stato di startup → self-start confermato; gli errori di comunicazione non degradano lo stato NMT; codici EMCY manufacturer (spec §7).
+- [x] Chiarire la policy definitiva del pin MCP_STBY e il comportamento CAN controller in standby → chiuso a livello hardware: RST/STBY non cablati come GPIO, MCP25625 sempre in Normal mode (vedi `include/hal/pins.h` e sezione "Gestione energetica" sopra).
 
 ### P1 - Sblocca configurazione e aggiornamenti
 
