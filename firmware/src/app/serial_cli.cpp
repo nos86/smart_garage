@@ -4,6 +4,8 @@
 
 #include <cstring>
 
+#include <mcp2515.h>
+
 #include "board.h"
 #include "cli/theme.h"
 #include "tasks.h"
@@ -30,10 +32,25 @@ namespace app
         static_assert(cli::kTaskStateDeleted == static_cast<uint8_t>(eDeleted), "task state mismatch");
         static_assert(cli::kTaskStateInvalid == static_cast<uint8_t>(eInvalid), "task state mismatch");
 
+        // Same reasoning for MCP2515::EFLG (autowp-mcp2515's mcp2515.h).
+        static_assert(cli::kCanEflgRx1Ovr == static_cast<uint8_t>(MCP2515::EFLG_RX1OVR), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgRx0Ovr == static_cast<uint8_t>(MCP2515::EFLG_RX0OVR), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgTxbo == static_cast<uint8_t>(MCP2515::EFLG_TXBO), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgTxep == static_cast<uint8_t>(MCP2515::EFLG_TXEP), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgRxep == static_cast<uint8_t>(MCP2515::EFLG_RXEP), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgTxwar == static_cast<uint8_t>(MCP2515::EFLG_TXWAR), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgRxwar == static_cast<uint8_t>(MCP2515::EFLG_RXWAR), "EFLG bit mismatch");
+        static_assert(cli::kCanEflgEwarn == static_cast<uint8_t>(MCP2515::EFLG_EWARN), "EFLG bit mismatch");
+
         // How often the RTOS page's task table and heap stats are resampled
         // while it is on screen; polling more often than this just burns
         // cycles on numbers that will not visibly change.
         constexpr uint32_t kRtosStatsPeriodMs = 500;
+
+        // 1 s, not the 500 ms used for RTOS stats: the RX/TX rate fields are
+        // a frames-per-second figure, so the sampling window needs to be a
+        // full second for the number on screen to mean what its label says.
+        constexpr uint32_t kCanStatsPeriodMs = 1000;
 
         constexpr uint8_t kHeaderRow = 1;
         constexpr uint8_t kTopRuleRow = 2;
@@ -101,6 +118,8 @@ namespace app
         model_.ultrasonicMode = debugControls.ultrasonicMode.load();
         model_.ultrasonicPowered = board::ultrasonic.isPowered();
         model_.canOk = board::canOk();
+        model_.canBitrateKbps = static_cast<uint32_t>(board::can.bitrateKbps());
+        model_.canComputedBaudrateBps = board::can.computedBaudrateBps();
         requestFullRedraw();
         render();
     }
@@ -257,6 +276,15 @@ namespace app
             rtosStatsLastMs_ = millis();
             refreshRtosStats();
         }
+        else if (model_.activeTab == cli::kTabCan)
+        {
+            // Sample immediately, same reasoning as the RTOS branch above.
+            // canStatsLastMs_ is whatever it was at the last sample (0 if
+            // this is the first visit), so the rate this computes is the
+            // average since then -- correct, just not "instantaneous" if the
+            // page was not visited in a while.
+            refreshCanStats();
+        }
     }
 
     void SerialCli::moveSelection(int delta)
@@ -398,6 +426,34 @@ namespace app
     }
 
     //////////////////////////////////////////////////////////////////////
+    //  CAN transceiver diagnostics
+
+    void SerialCli::refreshCanStats()
+    {
+        uint32_t now = millis();
+        uint32_t rx = board::can.rxFrameCount();
+        uint32_t tx = board::can.txFrameCount();
+
+        uint32_t dtMs = now - canStatsLastMs_;
+        if (dtMs > 0)
+        {
+            model_.canRxRatePs = ((rx - canLastRxCount_) * 1000) / dtMs;
+            model_.canTxRatePs = ((tx - canLastTxCount_) * 1000) / dtMs;
+        }
+
+        model_.canRxCount = rx;
+        model_.canTxCount = tx;
+        model_.canTxErrorCount = board::can.txErrorCount();
+        model_.canRxErrorCount = board::can.rxErrorCount();
+
+        canStatsLastMs_ = now;
+        canLastRxCount_ = rx;
+        canLastTxCount_ = tx;
+
+        markDirty();
+    }
+
+    //////////////////////////////////////////////////////////////////////
     //  Input handling
 
     void SerialCli::handleInputByte(char c)
@@ -477,6 +533,14 @@ namespace app
                 refreshRtosStats();
             }
         }
+        else if (model_.activeTab == cli::kTabCan)
+        {
+            uint32_t now = millis();
+            if (now - canStatsLastMs_ >= kCanStatsPeriodMs)
+            {
+                refreshCanStats();
+            }
+        }
 
         render();
     }
@@ -534,7 +598,9 @@ namespace app
             break;
 
         case EventType::kCanFrameReceived:
-            ++model_.canRxCount;
+            // Counts and rates come from board::can.rxFrameCount() via the
+            // periodic refreshCanStats() (see pollInput()/moveTab()), not
+            // from this event -- it only needs to nudge a redraw.
             markDirty();
             break;
 

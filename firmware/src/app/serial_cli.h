@@ -42,6 +42,9 @@ namespace app
         bool fullRedrawPending_ = true;
         InputState inputState_ = InputState::kIdle;
         uint32_t rtosStatsLastMs_ = 0;
+        uint32_t canStatsLastMs_ = 0;
+        uint32_t canLastRxCount_ = 0;
+        uint32_t canLastTxCount_ = 0;
 
         bool updateConnectionState();
         void onConnected();
@@ -49,6 +52,7 @@ namespace app
         void markDirty();
         void requestFullRedraw();
         void refreshRtosStats();
+        void refreshCanStats();
 
         void render();
         void drawChrome();

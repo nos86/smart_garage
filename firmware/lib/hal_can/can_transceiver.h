@@ -50,11 +50,37 @@ class CanTransceiver {
   uint8_t errorFlags();
   void clearErrors();
 
+  // TEC/REC (CAN error counters, MCP_TEC/MCP_REC): free-running, cleared by
+  // the controller itself as the bus recovers -- unlike errorFlags() there is
+  // no clear*() for these, so callers just poll them.
+  uint8_t txErrorCount();
+  uint8_t rxErrorCount();
+
+  // Nominal bitrate requested via begin(); 0 if begin() has not yet
+  // succeeded.
+  long bitrateKbps() const { return bitrateKbps_; }
+  // Bit rate re-derived from the CNF1-3 timing register values begin()
+  // actually programmed (see resolveTiming() in the .cpp) rather than the
+  // requested bitrateKbps -- a cheap sanity check that the driver's bit-time
+  // tables still agree with what setBitrate() ends up doing for this board's
+  // 8 MHz crystal.
+  uint32_t computedBaudrateBps() const { return computedBaudrateBps_; }
+
+  // Frames successfully sent/received since the last begin() -- reset on
+  // every call so the boot-time loopback self-test's frame doesn't linger
+  // in the count once Normal mode starts.
+  uint32_t rxFrameCount() const { return rxFrameCount_; }
+  uint32_t txFrameCount() const { return txFrameCount_; }
+
   uint8_t interruptPin() const { return intPin_; }
 
  private:
   uint8_t csPin_;
   uint8_t intPin_;
+  long bitrateKbps_ = 0;
+  uint32_t computedBaudrateBps_ = 0;
+  uint32_t rxFrameCount_ = 0;
+  uint32_t txFrameCount_ = 0;
   // Constructed lazily in begin(), not here: MCP2515's constructor calls
   // SPI.begin() directly, and this object is instantiated as a namespace-
   // scope global (app::board::can) -- running that before setup() risks

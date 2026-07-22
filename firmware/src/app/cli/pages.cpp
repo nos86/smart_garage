@@ -376,9 +376,60 @@ namespace app
                 return m.canOk ? theme::kActive : theme::kValue;
             }
 
+            void fmtCanBitrateCfg(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%lu kbps", static_cast<unsigned long>(m.canBitrateKbps));
+            }
+
+            void fmtCanBitrateCalc(const Model &m, char *buf, size_t len)
+            {
+                // Re-derived from the CNF1-3 registers begin() actually
+                // programmed (hal::CanTransceiver::computedBaudrateBps) --
+                // shown in bps, not kbps, so it reads as its own independent
+                // figure rather than a rounded copy of the line above.
+                snprintf(buf, len, "%lu bps", static_cast<unsigned long>(m.canComputedBaudrateBps));
+            }
+
             void fmtCanRxCount(const Model &m, char *buf, size_t len)
             {
                 snprintf(buf, len, "%lu", static_cast<unsigned long>(m.canRxCount));
+            }
+
+            void fmtCanTxCount(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%lu", static_cast<unsigned long>(m.canTxCount));
+            }
+
+            void fmtCanRxRate(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%lu pkt/s", static_cast<unsigned long>(m.canRxRatePs));
+            }
+
+            void fmtCanTxRate(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%lu pkt/s", static_cast<unsigned long>(m.canTxRatePs));
+            }
+
+            void fmtCanTec(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%u", static_cast<unsigned>(m.canTxErrorCount));
+            }
+
+            // MCP2515/CAN error-state thresholds (EFLG_TXEP/EFLG_RXEP,
+            // EFLG_TXBO): >=128 is error-passive, TEC==255 is bus-off.
+            Style styleCanTec(const Model &m)
+            {
+                return m.canTxErrorCount >= 128 ? theme::kActive : theme::kValue;
+            }
+
+            void fmtCanRec(const Model &m, char *buf, size_t len)
+            {
+                snprintf(buf, len, "%u", static_cast<unsigned>(m.canRxErrorCount));
+            }
+
+            Style styleCanRec(const Model &m)
+            {
+                return m.canRxErrorCount >= 128 ? theme::kActive : theme::kValue;
             }
 
             void fmtCanErrorFlags(const Model &m, char *buf, size_t len)
@@ -396,22 +447,96 @@ namespace app
                 return m.canErrorFlags == 0 ? theme::kValue : theme::kActive;
             }
 
+            void appendFlagName(char *buf, size_t len, size_t &pos, const char *name)
+            {
+                int n = snprintf(buf + pos, len - pos, pos == 0 ? "%s" : " %s", name);
+                if (n > 0)
+                {
+                    pos += static_cast<size_t>(n);
+                }
+            }
+
+            void fmtCanActiveFlags(const Model &m, char *buf, size_t len)
+            {
+                if (m.canErrorFlags == 0)
+                {
+                    copyText(buf, len, "none");
+                    return;
+                }
+                size_t pos = 0;
+                if (m.canErrorFlags & kCanEflgRx1Ovr)
+                {
+                    appendFlagName(buf, len, pos, "RX1OVR");
+                }
+                if (m.canErrorFlags & kCanEflgRx0Ovr)
+                {
+                    appendFlagName(buf, len, pos, "RX0OVR");
+                }
+                if (m.canErrorFlags & kCanEflgTxbo)
+                {
+                    appendFlagName(buf, len, pos, "TXBO");
+                }
+                if (m.canErrorFlags & kCanEflgTxep)
+                {
+                    appendFlagName(buf, len, pos, "TXEP");
+                }
+                if (m.canErrorFlags & kCanEflgRxep)
+                {
+                    appendFlagName(buf, len, pos, "RXEP");
+                }
+                if (m.canErrorFlags & kCanEflgTxwar)
+                {
+                    appendFlagName(buf, len, pos, "TXWAR");
+                }
+                if (m.canErrorFlags & kCanEflgRxwar)
+                {
+                    appendFlagName(buf, len, pos, "RXWAR");
+                }
+                if (m.canErrorFlags & kCanEflgEwarn)
+                {
+                    appendFlagName(buf, len, pos, "EWARN");
+                }
+            }
+
+            constexpr uint8_t kCanRightX = 45;
+
             void drawCanStatic(Screen &screen)
             {
-                screen.frame({1, 5, 40, 13}, "MCP25625 TRANSCEIVER");
+                screen.frame({1, 5, 42, 15}, "MCP25625 TRANSCEIVER");
+                screen.frame({kCanRightX, 5, 34, 15}, "ERROR REGISTERS");
 
                 screen.put(3, 8, "Link:", theme::kText);
-                screen.put(3, 9, "RX frames:", theme::kText);
-                screen.put(3, 10, "Errors:", theme::kText);
+                screen.put(3, 9, "Bitrate (cfg):", theme::kText);
+                screen.put(3, 10, "Bitrate (calc):", theme::kText);
+                screen.put(3, 11, "RX frames:", theme::kText);
+                screen.put(3, 12, "TX frames:", theme::kText);
+                screen.put(3, 13, "RX rate:", theme::kText);
+                screen.put(3, 14, "TX rate:", theme::kText);
 
-                screen.put(3, 15, "Read-only HAL diagnostics.", theme::kHelp);
-                screen.put(3, 16, "Loopback self-test runs at boot.", theme::kHelp);
+                screen.put(3, 17, "Read-only HAL diagnostics.", theme::kHelp);
+                screen.put(3, 18, "Loopback self-test runs at boot.", theme::kHelp);
+
+                screen.put(kCanRightX + 2, 8, "TEC:", theme::kText);
+                screen.put(kCanRightX + 2, 9, "REC:", theme::kText);
+                screen.put(kCanRightX + 2, 10, "EFLG:", theme::kText);
+                screen.put(kCanRightX + 2, 11, "Active:", theme::kText);
+
+                screen.put(kCanRightX + 2, 17, "TEC/REC >=128: passive", theme::kHelp);
+                screen.put(kCanRightX + 2, 18, "TEC ==255: bus-off", theme::kHelp);
             }
 
             constexpr Field kCanFields[] = {
-                {14, 8, 6, fmtCanLinkState, styleCanLinkState},
-                {14, 9, 10, fmtCanRxCount, nullptr},
-                {14, 10, 10, fmtCanErrorFlags, styleCanErrorFlags},
+                {20, 8, 6, fmtCanLinkState, styleCanLinkState},
+                {20, 9, 12, fmtCanBitrateCfg, nullptr},
+                {20, 10, 14, fmtCanBitrateCalc, nullptr},
+                {20, 11, 10, fmtCanRxCount, nullptr},
+                {20, 12, 10, fmtCanTxCount, nullptr},
+                {20, 13, 14, fmtCanRxRate, nullptr},
+                {20, 14, 14, fmtCanTxRate, nullptr},
+                {kCanRightX + 9, 8, 5, fmtCanTec, styleCanTec},
+                {kCanRightX + 9, 9, 5, fmtCanRec, styleCanRec},
+                {kCanRightX + 9, 10, 6, fmtCanErrorFlags, styleCanErrorFlags},
+                {kCanRightX + 9, 11, 22, fmtCanActiveFlags, styleCanErrorFlags},
             };
 
             ////////////////////////////////////////////////////////////////

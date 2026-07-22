@@ -4,30 +4,60 @@ namespace hal {
 
 namespace {
 
+// CNF1-3 values for each bitrate, straight from the same MCP_8MHz_*_CFG
+// #defines mcp2515.h's own setBitrate(speed, MCP_8MHZ) uses -- kept here too
+// so computeBaudrateBps() can re-derive the actual bit rate from the timing
+// registers without the private register-readback API the vendored library
+// doesn't expose.
+struct BitTiming {
+  uint8_t cnf1;
+  uint8_t cnf2;
+  uint8_t cnf3;
+};
+
 // Board's MCP25625 is clocked by an 8 MHz crystal (hardware/README.md), so
 // every bitrate is resolved against MCP_8MHZ. Only the bitrates plausible
 // for this project's CANopen bus are mapped; anything else fails begin()
 // rather than silently picking the wrong bit-timing registers.
-bool resolveSpeed(long bitrateKbps, CAN_SPEED &speed) {
+bool resolveTiming(long bitrateKbps, CAN_SPEED &speed, BitTiming &timing) {
   switch (bitrateKbps) {
     case 1000:
       speed = CAN_1000KBPS;
+      timing = {MCP_8MHz_1000kBPS_CFG1, MCP_8MHz_1000kBPS_CFG2, MCP_8MHz_1000kBPS_CFG3};
       return true;
     case 500:
       speed = CAN_500KBPS;
+      timing = {MCP_8MHz_500kBPS_CFG1, MCP_8MHz_500kBPS_CFG2, MCP_8MHz_500kBPS_CFG3};
       return true;
     case 250:
       speed = CAN_250KBPS;
+      timing = {MCP_8MHz_250kBPS_CFG1, MCP_8MHz_250kBPS_CFG2, MCP_8MHz_250kBPS_CFG3};
       return true;
     case 125:
       speed = CAN_125KBPS;
+      timing = {MCP_8MHz_125kBPS_CFG1, MCP_8MHz_125kBPS_CFG2, MCP_8MHz_125kBPS_CFG3};
       return true;
     case 100:
       speed = CAN_100KBPS;
+      timing = {MCP_8MHz_100kBPS_CFG1, MCP_8MHz_100kBPS_CFG2, MCP_8MHz_100kBPS_CFG3};
       return true;
     default:
       return false;
   }
+}
+
+// MCP2515 bit time = 1 (sync seg) + PRSEG + PS1 + PS2, each a TQ; TQ = 2 *
+// (BRP+1) / Fosc. Fosc is fixed at 8 MHz for this board (see resolveTiming),
+// so baudrate = Fosc / (2 * (BRP+1) * bit-time-in-TQ). Field layouts are the
+// MCP2515 datasheet's CNF1/CNF2/CNF3 registers.
+uint32_t computeBaudrateBps(const BitTiming &timing) {
+  constexpr uint32_t kFoscHz = 8000000UL;
+  uint32_t brp = (timing.cnf1 & 0x3Fu) + 1u;
+  uint32_t prseg = (timing.cnf2 & 0x07u) + 1u;
+  uint32_t ps1 = ((timing.cnf2 >> 3) & 0x07u) + 1u;
+  uint32_t ps2 = (timing.cnf3 & 0x07u) + 1u;
+  uint32_t tqPerBit = 1u + prseg + ps1 + ps2;
+  return kFoscHz / (2u * brp * tqPerBit);
 }
 
 void toDriverFrame(const CanFrame &in, can_frame &out) {
@@ -70,12 +100,17 @@ bool CanTransceiver::begin(CanMode mode, long bitrateKbps) {
   }
 
   CAN_SPEED speed;
-  if (!resolveSpeed(bitrateKbps, speed)) {
+  BitTiming timing;
+  if (!resolveTiming(bitrateKbps, speed, timing)) {
     return false;
   }
   if (mcp_->setBitrate(speed, MCP_8MHZ) != MCP2515::ERROR_OK) {
     return false;
   }
+  bitrateKbps_ = bitrateKbps;
+  computedBaudrateBps_ = computeBaudrateBps(timing);
+  rxFrameCount_ = 0;
+  txFrameCount_ = 0;
 
   MCP2515::ERROR modeResult;
   switch (mode) {
@@ -109,7 +144,11 @@ bool CanTransceiver::setFilter(uint8_t filterIndex, bool extended, uint32_t filt
 bool CanTransceiver::send(const CanFrame &frame) {
   can_frame driverFrame{};
   toDriverFrame(frame, driverFrame);
-  return mcp_->sendMessage(&driverFrame) == MCP2515::ERROR_OK;
+  if (mcp_->sendMessage(&driverFrame) != MCP2515::ERROR_OK) {
+    return false;
+  }
+  ++txFrameCount_;
+  return true;
 }
 
 bool CanTransceiver::receive(CanFrame &frame) {
@@ -118,12 +157,17 @@ bool CanTransceiver::receive(CanFrame &frame) {
     return false;
   }
   fromDriverFrame(driverFrame, frame);
+  ++rxFrameCount_;
   return true;
 }
 
 bool CanTransceiver::hasPendingMessage() { return mcp_->checkReceive(); }
 
 uint8_t CanTransceiver::errorFlags() { return mcp_->getErrorFlags(); }
+
+uint8_t CanTransceiver::txErrorCount() { return mcp_->errorCountTX(); }
+
+uint8_t CanTransceiver::rxErrorCount() { return mcp_->errorCountRX(); }
 
 void CanTransceiver::clearErrors() {
   mcp_->clearRXnOVR();

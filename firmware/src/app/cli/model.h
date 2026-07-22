@@ -31,6 +31,18 @@ namespace app
 
         constexpr uint8_t kOutputCount = 5;
 
+        // Raw bit values of MCP2515::EFLG (autowp-mcp2515's can.h/mcp2515.h),
+        // mirrored here so this layer needs no HAL/driver includes.
+        // serial_cli.cpp static_asserts they stay in sync.
+        constexpr uint8_t kCanEflgRx1Ovr = 1u << 7;
+        constexpr uint8_t kCanEflgRx0Ovr = 1u << 6;
+        constexpr uint8_t kCanEflgTxbo = 1u << 5;
+        constexpr uint8_t kCanEflgTxep = 1u << 4;
+        constexpr uint8_t kCanEflgRxep = 1u << 3;
+        constexpr uint8_t kCanEflgTxwar = 1u << 2;
+        constexpr uint8_t kCanEflgRxwar = 1u << 1;
+        constexpr uint8_t kCanEflgEwarn = 1u << 0;
+
         // Raw values of app::ForceMode (tasks.h), mirrored here so this layer
         // needs no FreeRTOS includes. serial_cli.cpp static_asserts they stay
         // in sync.
@@ -90,7 +102,14 @@ namespace app
             uint32_t rtosTotalHeapBytes = 0;
             uint32_t rtosUptimeMs = 0;
             bool canOk = false;
+            uint32_t canBitrateKbps = 0;
+            uint32_t canComputedBaudrateBps = 0;
             uint32_t canRxCount = 0;
+            uint32_t canTxCount = 0;
+            uint32_t canRxRatePs = 0;
+            uint32_t canTxRatePs = 0;
+            uint8_t canTxErrorCount = 0;
+            uint8_t canRxErrorCount = 0;
             uint8_t canErrorFlags = 0;
             uint8_t nmtState = kNmtInitializing;
             uint8_t canopenNodeId = 0;
