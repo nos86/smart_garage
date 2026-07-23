@@ -2,12 +2,18 @@
 
 #include "hal/logic/debounce.h"
 #include "hal/logic/dip_switch_decode.h"
+#include "hal/logic/persist_image.h"
 #include "hal/logic/ultrasonic_math.h"
 #include "hal/logic/ultrasonic_schedule.h"
 
 using hal::logic::debounce_update;
 using hal::logic::DebounceState;
 using hal::logic::dip_switch_decode;
+using hal::logic::persist_build_header;
+using hal::logic::persist_header_valid;
+using hal::logic::persist_select_slots;
+using hal::logic::persist_sequence_newer;
+using hal::logic::PersistHeader;
 using hal::logic::ultrasonic_duration_us_to_cm;
 using hal::logic::UltrasonicScheduler;
 
@@ -66,6 +72,58 @@ void test_ultrasonic_scheduler_stimulus_renews_window() {
   TEST_ASSERT_FALSE(s.isActive(110000));
 }
 
+void test_persist_header_roundtrip_valid() {
+  uint8_t payload[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+  PersistHeader header = persist_build_header(sizeof(payload), 42, payload);
+  TEST_ASSERT_TRUE(persist_header_valid(header, payload, sizeof(payload)));
+}
+
+void test_persist_header_rejects_corrupt_payload() {
+  uint8_t payload[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+  PersistHeader header = persist_build_header(sizeof(payload), 42, payload);
+  payload[3] ^= 0xFF;  // bit-flip after the header was sealed
+  TEST_ASSERT_FALSE(persist_header_valid(header, payload, sizeof(payload)));
+}
+
+void test_persist_header_rejects_bad_magic() {
+  PersistHeader header{};  // zero-initialized -- magic=0, never a valid image
+  uint8_t payload[4] = {0, 0, 0, 0};
+  TEST_ASSERT_FALSE(persist_header_valid(header, payload, sizeof(payload)));
+}
+
+void test_persist_header_rejects_oversized_payload_len() {
+  uint8_t payload[4] = {1, 2, 3, 4};
+  PersistHeader header = persist_build_header(sizeof(payload), 1, payload);
+  header.payloadLen = 200;  // claims more than the caller's buffer holds
+  TEST_ASSERT_FALSE(persist_header_valid(header, payload, sizeof(payload)));
+}
+
+void test_persist_select_slots_first_boot_neither_valid() {
+  auto decision = persist_select_slots(false, 0, false, 0);
+  TEST_ASSERT_EQUAL_INT(-1, decision.loadSlot);
+  TEST_ASSERT_EQUAL_UINT8(0, decision.writeSlot);
+  TEST_ASSERT_EQUAL_UINT32(1, decision.nextSequence);
+}
+
+void test_persist_select_slots_only_slot0_valid() {
+  auto decision = persist_select_slots(true, 5, false, 0);
+  TEST_ASSERT_EQUAL_INT(0, decision.loadSlot);
+  TEST_ASSERT_EQUAL_UINT8(1, decision.writeSlot);
+  TEST_ASSERT_EQUAL_UINT32(6, decision.nextSequence);
+}
+
+void test_persist_select_slots_prefers_newer_sequence() {
+  auto decision = persist_select_slots(true, 5, true, 9);
+  TEST_ASSERT_EQUAL_INT(1, decision.loadSlot);
+  TEST_ASSERT_EQUAL_UINT8(0, decision.writeSlot);
+  TEST_ASSERT_EQUAL_UINT32(10, decision.nextSequence);
+}
+
+void test_persist_sequence_newer_handles_wraparound() {
+  TEST_ASSERT_TRUE(persist_sequence_newer(1, 0xFFFFFFFFu));
+  TEST_ASSERT_FALSE(persist_sequence_newer(0xFFFFFFFFu, 1));
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -79,5 +137,13 @@ int main(int argc, char** argv) {
   RUN_TEST(test_ultrasonic_scheduler_baseline_before_any_stimulus);
   RUN_TEST(test_ultrasonic_scheduler_active_window_and_expiry);
   RUN_TEST(test_ultrasonic_scheduler_stimulus_renews_window);
+  RUN_TEST(test_persist_header_roundtrip_valid);
+  RUN_TEST(test_persist_header_rejects_corrupt_payload);
+  RUN_TEST(test_persist_header_rejects_bad_magic);
+  RUN_TEST(test_persist_header_rejects_oversized_payload_len);
+  RUN_TEST(test_persist_select_slots_first_boot_neither_valid);
+  RUN_TEST(test_persist_select_slots_only_slot0_valid);
+  RUN_TEST(test_persist_select_slots_prefers_newer_sequence);
+  RUN_TEST(test_persist_sequence_newer_handles_wraparound);
   return UNITY_END();
 }
