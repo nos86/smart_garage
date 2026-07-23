@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "hal/flash_layout.h"
 #include "hal/pins.h"
 
 namespace app::board {
@@ -56,6 +57,8 @@ hal::Led led2(hal::pins::kLed2);
 hal::OnboardRgbLed onboardLed(hal::pins::kOnboardRgbLed);
 hal::DipSwitch dipSwitch(hal::pins::kDipPins);
 hal::CanTransceiver can(hal::pins::kCanCs, hal::pins::kCanInt);
+hal::FlashStorage persistFlash(hal::flash_layout::kBaseOffset, hal::flash_layout::kSectorSize,
+                                hal::flash_layout::kSectorCount);
 
 bool canOk() { return canOk_; }
 
@@ -70,6 +73,7 @@ void init() {
   led2.begin();
   onboardLed.begin();
   dipSwitch.begin();
+  persistFlash.begin();
 
   canOk_ = runCanLoopbackSelfTest() && can.begin(hal::CanMode::kNormal);
 }

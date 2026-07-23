@@ -7,6 +7,7 @@
 #include "can_transceiver.h"
 #include "digital_input.h"
 #include "dip_switch.h"
+#include "flash_storage.h"
 #include "led.h"
 #include "onboard_rgb_led.h"
 #include "pir.h"
@@ -26,6 +27,7 @@ extern hal::Led led2;
 extern hal::OnboardRgbLed onboardLed;
 extern hal::DipSwitch dipSwitch;
 extern hal::CanTransceiver can;
+extern hal::FlashStorage persistFlash;
 
 // Result of the CAN loopback self-test run once by init(). Diagnostic only
 // -- init() does not fail/abort if this is false, it just leaves canOk()
