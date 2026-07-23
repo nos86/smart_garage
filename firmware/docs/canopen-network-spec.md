@@ -74,10 +74,10 @@ La numerazione dei canali è fissa ed è la stessa usata dalle etichette (§5.1)
 | DI bit 3–7 | riservati (leggono 0) | — | — |
 | DO bit 0 | RELAY1 | out | `board::relay1` |
 | DO bit 1 | RELAY2 | out | `board::relay2` |
-| DO bit 2 | LED1 | out | `board::led1` |
-| DO bit 3 | LED2 | out | `board::led2` |
-| DO bit 4–7 | riservati (scritture ignorate) | — | — |
+| DO bit 2–7 | riservati (scritture ignorate) | — | — |
 | AI 1 | Distanza ultrasuoni | in | `board::ultrasonic` |
+
+LED1/LED2 (`board::led1`/`board::led2`) non sono esposti come DO grezzi: sono i due indicatori di stato standard **CiA 303-3** (verde/RUN e rosso/ERROR), pilotati dal modulo `LEDs` di CANopenNode (§1) e aggiornati ogni ciclo `CO_process()` in `task_canopen.cpp` — verde = stato NMT/LSS (flicker=LSS config, blink=pre-operational, flash singolo=stopped, on=operational), rosso = condizioni di errore bus/HB/SYNC/RPDO (off=nessun errore, on=bus-off). Non sono scrivibili da rete né dal CLI.
 
 ### Oggetti
 
@@ -270,7 +270,8 @@ Il nodo 5 ricalcola l'insieme dei COB-ID sorvegliati (ora include `0x180+2`) e d
 ## 11. Impatti sull'implementazione attuale (riepilogo per il futuro lavoro)
 
 - Rigenerare `OD.c/OD.h` (CANopenEditor) con: identity §2, area 6000h §4, area 2000h §5, mapping/timing TPDO §6, gruppo storage `PERSIST_APP` — e stavolta **versionare il file di progetto `.xpd`** accanto ai generati.
-- `task_canopen.cpp`: rimuovere `nodeIdFromDip()` a favore di flash + override DIP (§3); correggere `kNmtControl` (§7); registrare il callback LSS store.
-- Nuovo modulo storage flash A/B (§8) al posto di `CO_storageBlank`.
+- [x] `task_canopen.cpp`: rimosso `nodeIdFromDip()` a favore di flash + override DIP (§3, `applyNodeIdOverride()`); corretto `kNmtControl` (§7, tolto `CO_ERR_REG_COMMUNICATION` dalla maschera); registrato il callback LSS store (`CO_LSSslave_initCfgStoreCall`, `canopen::persist::lssStoreCallback`). Corretti in corso d'opera due dangling-pointer latenti pre-esistenti (variabili `pendingNodeId`/`pendingBitRate` e `CO_storage_t storage` erano stack-local di `initCanopen()` ma referenziate da CANopenNode per tutta la vita del nodo): ora vivono rispettivamente in `canopen::persist` e come statiche di modulo in `task_canopen.cpp`.
+- [x] Nuovo modulo storage flash A/B (§8) al posto di `CO_storageBlank`: `src/app/canopen/CO_storageFlash.{h,cpp}` (snapshot combinato LSS node-ID/bit-rate + `OD_PERSIST_COMM`, non ancora `PERSIST_APP` — vedi punto OD sopra, non ancora rigenerato), framing/CRC32/selezione slot puri e testati in `include/hal/logic/persist_image.h` (`test/test_hal_logic`), accesso fisico alla flash via nuova HAL `hal::FlashStorage` (`lib/hal_flash/`, esposta come `board::persistFlash`) e layout riservato in `include/hal/flash_layout.h`.
+- [x] Ciclo di reset comunicazione NMT a runtime: `canopenTask()` ora replica il main loop di riferimento di CANopenNode (`CO_new()` una volta sola, poi ri-esegue `bringUpCommunication()` — ex `initCanopen()` — su ogni `CO_RESET_COMM`; `CO_RESET_APP` fa `rp2040.reboot()`). Prima di questo fix il commissioning LSS (§3/§9) scriveva il nuovo node-ID in flash ma il nodo restava fermo con la vecchia configurazione finché non veniva spento e riacceso a mano: `CO_process()` ritornava già `CO_RESET_COMM` (confermato in `CO_LSSslave.c`, scatta su "switch state global → waiting" dopo lo store) ma il valore veniva scartato. `CO_driver.c` (`CO_CANmodule_disable`/`CO_CANmodule_init`) ora azzera `CANmodule->CANnormal` attorno alla finestra di ri-configurazione e `canopenDispatchRxFrame()` (task diverso, `task_can.cpp`) lo rispetta, per evitare una race sulla rxArray riscritta in-place.
 - Nuovo modulo "rule engine" collegato al dispatcher RX e all'event queue esistente.
 - Collegare gli oggetti OD all'HAL via extension callback (6000h/6200h/6401h ↔ `board::*`).

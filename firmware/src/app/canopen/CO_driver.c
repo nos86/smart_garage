@@ -6,11 +6,17 @@
  * can reach app::board::can and app::canBusMutex); this file only knows the
  * small extern "C" bridge surface declared below.
  *
- * Scope note: this bring-up does not implement a runtime NMT
- * reset-communication cycle (CO_CANsetConfigurationMode() /
- * CO_CANmodule_disable() are no-ops) -- CANopenNode is initialized once at
- * boot by task_canopen.cpp and stays up. A future OTA-driven reset flow
- * would need to give these real behavior.
+ * Scope note: task_canopen.cpp now runs CANopenNode's standard NMT
+ * reset-communication cycle (CO_RESET_COMM re-runs CO_CANinit()..
+ * CO_CANsetNormalMode() on the same CO_t, e.g. after LSS commissioning
+ * configures a previously-unconfigured node-ID). CO_CANsetConfigurationMode()
+ * stays a no-op -- board::can (the physical MCP25625) is owned by
+ * app::board::init() and never needs reconfiguring here -- but
+ * CO_CANmodule_disable()/CO_CANmodule_init() now gate CANmodule->CANnormal
+ * around the reconfiguration window, and canopenDispatchRxFrame() (called
+ * from task_can.cpp, a *different* FreeRTOS task) checks that flag before
+ * touching rxArray, so a frame arriving mid-reconfiguration is safely
+ * dropped instead of racing the rxArray rewrite below.
  */
 
 #include <string.h>
@@ -42,13 +48,16 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule, void *CANptr, CO_C
         return CO_ERROR_ILLEGAL_ARGUMENT;
     }
 
+    /* First write, before anything else touches rxArray below: gates
+     * canopenDispatchRxFrame() off immediately, see scope note above. */
+    CANmodule->CANnormal = false;
+
     CANmodule->CANptr = CANptr;
     CANmodule->rxArray = rxArray;
     CANmodule->rxSize = rxSize;
     CANmodule->txArray = txArray;
     CANmodule->txSize = txSize;
     CANmodule->CANerrorStatus = 0;
-    CANmodule->CANnormal = false;
     /* Software ident/mask matching only (see canopenDispatchRxFrame below):
      * the MCP25625's hardware filter banks are left at their accept-all
      * reset state rather than programmed per rxArray entry. Programming
@@ -75,8 +84,15 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule, void *CANptr, CO_C
 }
 
 void CO_CANmodule_disable(CO_CANmodule_t *CANmodule) {
-    (void)CANmodule;
-    /* No-op, see scope note above. */
+    /* Called by task_canopen.cpp's communication-reset loop right before it
+     * starts re-running CO_CANinit()..CO_CANopenInitPDO() on the same
+     * CO_t/CANmodule -- stop canopenDispatchRxFrame() from touching rxArray
+     * (task_can.cpp, a different task, may preempt at any point) until
+     * CO_CANsetNormalMode() flips it back on at the end of the new bring-up.
+     * The physical MCP25625 itself is untouched, see scope note above. */
+    if (CANmodule != NULL) {
+        CANmodule->CANnormal = false;
+    }
 }
 
 CO_ReturnError_t CO_CANrxBufferInit(CO_CANmodule_t *CANmodule, uint16_t index, uint16_t ident, uint16_t mask,
@@ -155,7 +171,11 @@ void CO_CANmodule_process(CO_CANmodule_t *CANmodule) {
  * software ident/mask matching loop from CANopenNode's own blank driver
  * template. */
 void canopenDispatchRxFrame(uint32_t ident, uint8_t dlc, const uint8_t data[8]) {
-    if (activeCANmodule == NULL) {
+    /* activeCANmodule is the same object across every communication-reset
+     * cycle (task_canopen.cpp never calls CO_new() again), so the nullness
+     * check alone doesn't cover the reconfiguration window -- CANnormal
+     * does (see CO_CANmodule_disable()/CO_CANmodule_init() above). */
+    if (activeCANmodule == NULL || !activeCANmodule->CANnormal) {
         return;
     }
 

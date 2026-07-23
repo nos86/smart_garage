@@ -86,9 +86,10 @@ typedef struct {
     uint32_t errOld;
 } CO_CANmodule_t;
 
-/* Data storage object for one entry -- CO_storageBlank.c/.h (adapted from
- * the example, no-op) never actually persists anything, so addrNV is unused
- * for this bring-up. */
+/* Data storage object for one entry. addrNV is unused: the flash A/B backend
+ * (CO_storageFlash.cpp) writes one combined snapshot of every entry plus the
+ * LSS pending node-ID/bit-rate on each save, rather than per-entry
+ * non-volatile addresses (see docs/canopen-network-spec.md §8). */
 typedef struct {
     void *addr;
     size_t len;
