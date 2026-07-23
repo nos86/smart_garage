@@ -215,25 +215,88 @@ namespace app
       lastTimer = timer;
     }
 
-    void reportLedStateIfChanged(uint8_t index, bool state, bool &lastState)
+    void reportLedPatternIfChanged(uint8_t index, uint8_t pattern, uint8_t &lastPattern)
     {
-      if (state == lastState)
+      if (pattern == lastPattern)
       {
         return;
       }
-      lastState = state;
-      Event ev{EventType::kLedStateChanged, index, state};
+      lastPattern = pattern;
+      Event ev{EventType::kLedStateChanged, index, /*state=*/false, pattern};
       xQueueSend(eventQueue, &ev, 0);
     }
 
+    // Which named CiA 303-3 pattern (CO_LEDs.h's doc comment) is currently
+    // selected for the green run indicator. Mirrors the priority chain
+    // CO_LEDs_process() (lib/CANopenNode/vendor/303/CO_LEDs.c) uses to pick
+    // rd_co/gr_co: that function only keeps the winning pattern's raw,
+    // fast-toggling on/off level in co->LEDs, not which pattern won, so the
+    // CLI needs its own copy of the same priority order to show a stable
+    // label instead of the flickering instantaneous level.
+    uint8_t runLedPattern(CO_NMT_internalState_t nmtState, bool lssConfig)
+    {
+      if (lssConfig)
+      {
+        return cli::kLedPatternFlicker;
+      }
+      // Firmware download in progress (-> triple flash) never applies here:
+      // this codebase has no OTA yet (see task_canopen.cpp file header),
+      // same as CO_process()'s hardcoded CO_STATUS_FIRMWARE_DOWNLOAD_IN_PROGRESS.
+      switch (nmtState)
+      {
+      case CO_NMT_STOPPED:
+        return cli::kLedPatternFlash1;
+      case CO_NMT_PRE_OPERATIONAL:
+        return cli::kLedPatternBlink;
+      case CO_NMT_OPERATIONAL:
+        return cli::kLedPatternOn;
+      default:
+        return cli::kLedPatternOff;
+      }
+    }
+
+    // Same idea for the red error indicator; priority order matches
+    // CO_LEDs_process()'s rd_co cascade (highest priority first).
+    uint8_t errorLedPattern(CO_NMT_internalState_t nmtState, bool errBusOff, bool errBusWarn, bool errSync,
+                             bool errHbCons, bool errOther)
+    {
+      if (errBusOff)
+      {
+        return cli::kLedPatternOn;
+      }
+      if (nmtState == CO_NMT_INITIALIZING)
+      {
+        return cli::kLedPatternFlicker;
+      }
+      // Quadruple flash (RPDO event-timer timeout) never applies: this
+      // codebase does not wire RPDO event timers, same as CO_process()'s
+      // hardcoded `false` for that parameter.
+      if (errSync)
+      {
+        return cli::kLedPatternFlash3;
+      }
+      if (errHbCons)
+      {
+        return cli::kLedPatternFlash2;
+      }
+      if (errBusWarn)
+      {
+        return cli::kLedPatternFlash1;
+      }
+      if (errOther)
+      {
+        return cli::kLedPatternBlink;
+      }
+      return cli::kLedPatternOff;
+    }
+
     // Drives LED1/LED2 as the CiA 303-3 indicator pair (green run / red
-    // error) computed by CANopenNode's LEDs module (CO_CONFIG_LEDS is
-    // enabled by default and not overridden -- see
-    // src/app/canopen/CO_driver_target.h), instead of leaving that output
-    // unread. Must run every cycle, not just on change, since the module's
-    // blink/flicker/flash patterns need continuous re-evaluation of the
-    // same logical state.
-    void applyLedIndicators(const CO_t *co, bool &lastLed1, bool &lastLed2)
+    // error) and reports which named pattern (CO_LEDs.h's doc comment) is
+    // currently selected, so the CLI can show a stable label instead of the
+    // module's fast on/off toggling. Must run every cycle, not just on
+    // change, since the underlying NMT/error state needs continuous
+    // re-evaluation.
+    void applyLedIndicators(const CO_t *co, uint8_t &lastLed1Pattern, uint8_t &lastLed2Pattern)
     {
       if (co->LEDs == nullptr)
       {
@@ -244,8 +307,22 @@ namespace app
       bool errorOn = CO_LED_RED(co->LEDs, CO_LED_CANopen) != 0;
       board::led1.set(runOn);
       board::led2.set(errorOn);
-      reportLedStateIfChanged(0, runOn, lastLed1);
-      reportLedStateIfChanged(1, errorOn, lastLed2);
+
+      CO_NMT_internalState_t nmtState =
+          co->nodeIdUnconfigured ? CO_NMT_INITIALIZING : (co->NMT != nullptr ? co->NMT->operatingState : CO_NMT_INITIALIZING);
+      bool lssConfig = co->LSSslave != nullptr && CO_LSSslave_getState(co->LSSslave) == CO_LSS_STATE_CONFIGURATION;
+      uint16_t canErrorStatus = co->CANmodule != nullptr ? co->CANmodule->CANerrorStatus : 0;
+      bool errBusOff = (canErrorStatus & CO_CAN_ERRTX_BUS_OFF) != 0;
+      bool errBusWarn = (canErrorStatus & CO_CAN_ERR_WARN_PASSIVE) != 0;
+      bool errSync = !co->nodeIdUnconfigured && co->em != nullptr && CO_isError(co->em, CO_EM_SYNC_TIME_OUT);
+      bool errHbCons = !co->nodeIdUnconfigured && co->em != nullptr &&
+                        (CO_isError(co->em, CO_EM_HEARTBEAT_CONSUMER) || CO_isError(co->em, CO_EM_HB_CONSUMER_REMOTE_RESET));
+      bool errOther = co->em != nullptr && CO_getErrorRegister(co->em) != 0;
+
+      uint8_t runPattern = runLedPattern(nmtState, lssConfig);
+      uint8_t errorPattern = errorLedPattern(nmtState, errBusOff, errBusWarn, errSync, errHbCons, errOther);
+      reportLedPatternIfChanged(0, runPattern, lastLed1Pattern);
+      reportLedPatternIfChanged(1, errorPattern, lastLed2Pattern);
     }
 
     void canopenTask(void *)
@@ -311,7 +388,6 @@ namespace app
           applyLedIndicators(co, lastLed1Pattern, lastLed2Pattern);
         }
 
-        applyLedIndicators(co, lastLed1State, lastLed2State);
         if (resetCmd == CO_RESET_APP)
         {
           // NMT "reset node": this project has no in-place teardown of

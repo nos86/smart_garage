@@ -616,11 +616,11 @@ namespace app
         case EventType::kLedStateChanged:
             if (ev.index == 0)
             {
-                model_.led1 = ev.state;
+                model_.led1Pattern = ev.value;
             }
             else
             {
-                model_.led2 = ev.state;
+                model_.led2Pattern = ev.value;
             }
             markDirty();
             break;

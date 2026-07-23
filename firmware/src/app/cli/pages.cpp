@@ -97,28 +97,43 @@ namespace app
 
             // LED1/LED2 are not part of the forceable outputs array above --
             // they are CiA 303-3 indicators driven by the CANopen stack
-            // (task_canopen.cpp). Shown read-only, on STATUS and CANOPEN.
-            void fmtLed1Summary(const Model &m, char *buf, size_t len)
+            // (task_canopen.cpp). Shown read-only, on CANOPEN only (their
+            // blink pattern needs the wider CANOPEN tab to label
+            // meaningfully; STATUS has no room and no protocol context).
+            const char *ledPatternLabel(uint8_t pattern)
             {
-                snprintf(buf, len, "%-8s %s", "LED 1", m.led1 ? "ON" : "OFF");
+                switch (pattern)
+                {
+                case kLedPatternFlicker:
+                    return "FLICKERING";
+                case kLedPatternBlink:
+                    return "BLINKING";
+                case kLedPatternFlash1:
+                    return "SINGLE FLASH";
+                case kLedPatternFlash2:
+                    return "DOUBLE FLASH";
+                case kLedPatternFlash3:
+                    return "TRIPLE FLASH";
+                case kLedPatternFlash4:
+                    return "QUADRUPLE FLASH";
+                case kLedPatternOn:
+                    return "ON";
+                default:
+                    return "OFF";
+                }
             }
 
-            Style styleLed1Summary(const Model &m) { return m.led1 ? theme::kActive : theme::kValue; }
-
-            void fmtLed2Summary(const Model &m, char *buf, size_t len)
+            template <uint8_t Model::*M>
+            void fmtLedPattern(const Model &m, char *buf, size_t len)
             {
-                snprintf(buf, len, "%-8s %s", "LED 2", m.led2 ? "ON" : "OFF");
+                copyText(buf, len, ledPatternLabel(m.*M));
             }
 
-            Style styleLed2Summary(const Model &m) { return m.led2 ? theme::kActive : theme::kValue; }
-
-            void fmtLed1State(const Model &m, char *buf, size_t len) { copyText(buf, len, m.led1 ? "ON" : "OFF"); }
-
-            Style styleLed1State(const Model &m) { return m.led1 ? theme::kActive : theme::kValue; }
-
-            void fmtLed2State(const Model &m, char *buf, size_t len) { copyText(buf, len, m.led2 ? "ON" : "OFF"); }
-
-            Style styleLed2State(const Model &m) { return m.led2 ? theme::kActive : theme::kValue; }
+            template <uint8_t Model::*M>
+            Style styleLedPattern(const Model &m)
+            {
+                return m.*M == kLedPatternOff ? theme::kValue : theme::kActive;
+            }
 
             template <uint8_t I>
             void fmtOutputSummary(const Model &m, char *buf, size_t len)
@@ -206,9 +221,7 @@ namespace app
                 {8, 11, 12, fmtDip, nullptr},
                 {29, 8, 13, fmtOutputSummary<0>, styleOutputSummary<0>},
                 {29, 9, 13, fmtOutputSummary<1>, styleOutputSummary<1>},
-                {29, 10, 13, fmtLed1Summary, styleLed1Summary},
-                {29, 11, 13, fmtLed2Summary, styleLed2Summary},
-                {29, 12, 13, fmtOutputSummary<2>, styleOutputSummary<2>},
+                {29, 10, 13, fmtOutputSummary<2>, styleOutputSummary<2>},
                 {62, 8, 5, fmtUltraMode, nullptr},
                 {62, 9, 4, fmtUltraPower, styleUltraPower},
                 {62, 10, 12, fmtDistance, nullptr},
@@ -631,8 +644,8 @@ namespace app
                 {20, 9, 6, fmtCanopenNodeId, nullptr},
                 {20, 10, 10, fmtHeartbeatCount, nullptr},
                 {20, 11, 16, fmtLastHeartbeat, nullptr},
-                {23, 12, 4, fmtLed1State, styleLed1State},
-                {23, 13, 4, fmtLed2State, styleLed2State},
+                {23, 12, 15, fmtLedPattern<&Model::led1Pattern>, styleLedPattern<&Model::led1Pattern>},
+                {23, 13, 15, fmtLedPattern<&Model::led2Pattern>, styleLedPattern<&Model::led2Pattern>},
             };
 
         } // namespace

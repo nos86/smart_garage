@@ -21,7 +21,7 @@ namespace app
     kCanopenNodeId,     // index = CANopen node-ID in use, sent once after init
     kNmtStateChanged,   // index = one of cli::kNmt* (see cli/model.h)
     kHeartbeatSent,     // the HB producer just sent a heartbeat
-    kLedStateChanged,   // CiA 303-3 indicator edge; index = 0 (LED1/RUN) or 1 (LED2/ERROR), state = new level
+    kLedStateChanged,   // CiA 303-3 indicator pattern change; index = 0 (LED1/RUN) or 1 (LED2/ERROR), value = new cli::kLedPattern* id
   };
 
   struct Event
@@ -29,6 +29,7 @@ namespace app
     EventType type;
     uint8_t index = 0;
     bool state = false;
+    uint8_t value = 0;
     float distanceCm = 0.0f;
   };
 

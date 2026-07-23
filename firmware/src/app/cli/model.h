@@ -29,6 +29,22 @@ namespace app
         constexpr uint8_t kNmtOperational = 2;
         constexpr uint8_t kNmtStopped = 3;
 
+        // CiA 303-3 indicator patterns, named after the standard's own
+        // vocabulary (see lib/CANopenNode/vendor/303/CO_LEDs.h). Computed in
+        // task_canopen.cpp from NMT state/LSS/error inputs -- the same
+        // priority chain CANopenNode's CO_LEDs_process() uses internally --
+        // since the library only exposes the raw, fast-toggling on/off
+        // level of the currently selected pattern, not which pattern is
+        // selected.
+        constexpr uint8_t kLedPatternOff = 0;
+        constexpr uint8_t kLedPatternFlicker = 1;
+        constexpr uint8_t kLedPatternBlink = 2;
+        constexpr uint8_t kLedPatternFlash1 = 3;
+        constexpr uint8_t kLedPatternFlash2 = 4;
+        constexpr uint8_t kLedPatternFlash3 = 5;
+        constexpr uint8_t kLedPatternFlash4 = 6;
+        constexpr uint8_t kLedPatternOn = 7;
+
         // Forceable outputs on the OUTPUTS tab: relay1, relay2, onboard RGB.
         // LED1/LED2 are excluded -- they are CiA 303-3 run/error indicators
         // driven by the CANopen stack (see task_canopen.cpp), not
@@ -93,8 +109,12 @@ namespace app
             uint8_t dipValue = 0;
             bool relay1 = false;
             bool relay2 = false;
-            bool led1 = false; // CiA 303-3 green run indicator (task_canopen.cpp), read-only
-            bool led2 = false; // CiA 303-3 red error indicator (task_canopen.cpp), read-only
+            // CiA 303-3 green run / red error indicator patterns
+            // (task_canopen.cpp), read-only. One of the kLedPattern* values
+            // above, not an instantaneous on/off level -- shown only on the
+            // CANOPEN tab, not on STATUS.
+            uint8_t led1Pattern = kLedPatternOff;
+            uint8_t led2Pattern = kLedPatternOff;
             bool onboard = false;
             float distanceCm = -1.0f;
             bool ultrasonicTimeout = false;
